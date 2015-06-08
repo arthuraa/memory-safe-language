@@ -371,4 +371,70 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   by case: (eval_expr ls e) => [[]| | |] //=; exists pm.
 Qed.
 
+Fixpoint vars_e e :=
+  match e with
+  | Var x => fset1 x
+  | Num _ => fset0
+  | Binop _ e1 e2 => vars_e e1 :|: vars_e e2
+  | ENil => fset0
+  end.
+
+Fixpoint vars_c c :=
+  match c with
+  | Assn x e => x |: vars_e e
+  | Load x e => x |: vars_e e
+  | Store e e' => vars_e e :|: vars_e e'
+  | Alloc x e => x |: vars_e e
+  | Free e => vars_e e
+  | Skip => fset0
+  | Seq c1 c2 => vars_c c1 :|: vars_c c2
+  | If e ct ce => vars_e e :|: vars_c ct :|: vars_c ce
+  | While e c => vars_e e :|: vars_c c
+  end.
+
+Lemma eval_expr_unionm ls1 ls2 e :
+  fsubset (vars_e e) (domm ls1) ->
+  eval_expr (unionm ls1 ls2) e =
+  eval_expr ls1 e.
+Proof.
+elim: e => [x|n|b e1 IH1 e2 IH2|] //=.
+  by rewrite fsub1set unionmE => /dommP [v ->].
+by rewrite fsubUset=> /andP [/IH1 {IH1} -> /IH2 {IH2} ->].
+Qed.
+
+Lemma eval_com_domm ls h ls' h' c k :
+  fsubset (vars_c c) (domm ls) ->
+  eval_com ls h c k = Done ls' h' ->
+  domm ls' = domm ls.
+Proof.
+elim: k ls ls' h h' c => [|k IH] //= ls ls' h h'.
+case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
+- rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsetU1E fsubsetUr.
+- case: eval_expr => // p; case: (h p)=> [v|] //=.
+  rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsetU1E fsubsetUr.
+- case: eval_expr => // p; rewrite /updm; case: (h p)=> [v|] //=.
+  by rewrite fsubUset=> /andP [Pe Pe'] [<- _].
+- case: eval_expr => // - [n|] //.
+  rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsetU1E fsubsetUr.
+- by case: eval_expr => // p; case: free=> // h'' _ [<- _].
+- congruence.
+- case eval_c1: eval_com=> [ls'' h''| | ] //.
+  rewrite fsubUset=> /andP [vars_c1 vars_c2] eval_c2.
+  rewrite -(IH _ _ _ _ _ vars_c1 eval_c1) in vars_c2 *.
+  by rewrite (IH _ _ _ _ _ vars_c2 eval_c2).
+- case: eval_expr=> // - b.
+  by rewrite 2!fsubUset -andbA => /and3P [_ vars_c1 vars_c2]; case: b; eauto.
+case: eval_expr=> // - [] P; first by apply: IH.
+by apply: IH; rewrite fsub0set.
+Qed.
+
 End Def.
