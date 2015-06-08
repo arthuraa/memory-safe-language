@@ -109,10 +109,11 @@ Definition heap := {partmap name * int -> value}.
 
 Implicit Types (ls : locals) (h : heap).
 
+Definition init_block h b n :=
+  unionm (mkpartmapf (fun _ => VNum 0) [seq (b, Posz i) | i <- iota 0 n]) h.
+
 Definition alloc ls h n :=
-  locked
-  (let b := fresh (names (ls, h)) in
-   (b, unionm (mkpartmapf (fun _ => VNum 0) [seq (b, Posz i) | i <- iota 0 n]) h)).
+  locked (let b := fresh (names (ls, h)) in (b, init_block h b n)).
 
 Definition free h i :=
   locked
@@ -466,7 +467,69 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   rewrite domm_set (_ : p |: domm h1 = domm h1) //.
   apply/eq_fset=> p'; rewrite in_fsetU1.
   by have [->|//] := altP eqP; rewrite mem_domm get_p.
-- admit.
+- rewrite fsubU1set=> /andP [Px Pe] /=.
+  case eval_e: eval_expr=> [ | [n|] | |] // [<- <-] dis.
+  rewrite /alloc -!lock /=.
+  set i := fresh (names (ls1, h1)).
+  set i' := fresh (names (unionm ls1 ls2, unionm h1 h2)).
+  set pm := fperm2 i i'.
+  have re_h1 : rename pm (init_block h1 i n) = init_block h1 i' n.
+    rewrite /init_block renamem_union.
+    congr unionm.
+      rewrite renamem_mkpartmapf.
+      congr mkpartmapf; rewrite renamesE -[in LHS]map_comp /=.
+      by apply/eq_map=> n' /=; rewrite renamepE /= renamenE fperm2L.
+    rewrite names_disjointE // supp_fperm2.
+    case: ifP=> _; first by rewrite /fdisjoint fset0I.
+    apply/fdisjointP=> i'' /fset2P [->|->] {i''}.
+      have := freshP (names (ls1, h1)) : i \notin names (ls1, h1).
+      by apply: contra=> Pi; apply/fsetUP; right=> /=.
+    have := freshP (names (unionm ls1 ls2, unionm h1 h2))
+            : i' \notin names (unionm ls1 ls2, unionm h1 h2).
+    apply: contra=> Pi'; apply/fsetUP; right=> /=.
+    apply/namesmP; case/namesmP: Pi'=> p v Pp Pi'.
+      eapply PMFreeNamesKey; eauto.
+      by rewrite unionmE Pp.
+    suff h : unionm h1 h2 p = Some v by eapply PMFreeNamesVal; eauto.
+    by rewrite unionmE Pp.
+  exists pm.
+    rewrite eval_expr_unionm // eval_e -!lock /= renamem_set.
+    rewrite renamevE renamepE /= renamenE fperm2L setm_union.
+    rewrite re_h1 /init_block unionmA; congr Done.
+    congr unionm; apply/eq_partmap=> x'; rewrite 2!setmE renamemE fperm2V.
+    have [//|_] := altP eqP.
+    case get_x': (ls1 x')=> [v|] //; rewrite renameoE /= names_disjointE //.
+    rewrite supp_fperm2; case: ifP=> _; first by rewrite /fdisjoint fset0I.
+    apply/fdisjointP=> i'' /fset2P [->|->] {i''}.
+      have := freshP (names (ls1, h1)) : i \notin names (ls1, h1).
+      apply: contra=> Pi; apply/fsetUP; left=> /=.
+      by apply/namesmP; eapply PMFreeNamesVal; eauto.
+    have := freshP (names (unionm ls1 ls2, unionm h1 h2))
+              : i' \notin names (unionm ls1 ls2, unionm h1 h2).
+    apply: contra=> Pi'; apply/fsetUP; left=> /=.
+    have ? : unionm ls1 ls2 x' = Some v by rewrite unionmE get_x'.
+    by apply/namesmP; eapply PMFreeNamesVal; eauto.
+  rewrite re_h1.
+  have: fsubset (names (domm (init_block h1 i' n))) (i' |: names (domm h1)).
+    rewrite /init_block domm_union namesfsU.
+    apply/fsubsetP=> i'' /fsetUP [/namesfsP [p /dommP [v Pv] Pi'']|].
+      move: Pv; rewrite mkpartmapfE.
+      case: ifP Pi''=> // /mapP [off Poff ->]; rewrite in_fsetU in_fset0 orbF.
+      by move=> /= /namesnP <- _; rewrite in_fsetU1 eqxx.
+    by move=> h; rewrite in_fsetU1 orbC h.
+  move=> /fsubsetP sub; apply/fdisjointP=> i'' /sub /fsetU1P [->{i''}|].
+    have := freshP (names (unionm ls1 ls2, unionm h1 h2))
+            : i' \notin names (unionm ls1 ls2, unionm h1 h2).
+    apply: contra=> Pi'; apply/fsetUP; right=> /=; apply/namesmP.
+    rewrite fdisjointC in dis; move/fdisjointP/(_ _ Pi') in dis.
+    case/namesfsP: Pi'=> [p /dommP [v Pv] Pi'].
+    have ?: unionm h1 h2 p = Some v.
+      rewrite unionmE; case get_h1: (h1 p) => [v'|] //=.
+      suff : ~~ true by [].
+      apply: contra dis=> _; apply/namesfsP; exists p=>//.
+      by apply/dommP; eauto.
+    by eapply PMFreeNamesKey; eauto.
+  by move: i''; apply/fdisjointP.
 - admit.
 - by move=> _ [<- <-] dis; exists 1; rewrite !rename1.
 - rewrite /= fsubUset=> /andP [sub1 sub2].
