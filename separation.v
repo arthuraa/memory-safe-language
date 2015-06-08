@@ -530,7 +530,40 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
       by apply/dommP; eauto.
     by eapply PMFreeNamesKey; eauto.
   by move: i''; apply/fdisjointP.
-- admit.
+- move=> /= sub; case eval_e: eval_expr=> [| |p|] //=.
+  case free_p: free=> [h'|] // [<- <-] // dis.
+  have dis': fdisjoint (domm h1) (domm h2).
+    apply/fdisjointP=> p' Pp'.
+    have {Pp'} Pp': p'.1 \in names (domm h1).
+      apply/namesfsP; exists p'=> //.
+      by rewrite in_fsetU; apply/orP; left; apply/namesnP.
+    move: (fdisjointP _ _ dis _ Pp'); apply: contra=> {Pp'} Pp'.
+    by apply/namesfsP; exists p'=> //; apply/namesnP.
+  move: free_p; rewrite /free -!lock.
+  case: fpickP=> [p' /eqP Pp' /dommP [v Pv]|] //= [eh'].
+  exists 1; rewrite !rename1.
+    rewrite eval_expr_unionm // eval_e -!lock -eh'.
+    case: fpickP=> [p'' /eqP Pp'' /dommP [v' Pv']|] /=.
+      rewrite filterm_union //; congr Done; congr unionm.
+      apply/eq_partmap=> p'''; rewrite filtermE.
+      case get_p''': (h2 _) => [v''|] //=.
+      have [Pe|] //= := altP eqP.
+      have: p'.1 \in names (domm h1).
+        apply/namesfsP; exists p'; last by apply/namesnP.
+        by apply/dommP; eauto.
+      move=> /(fdisjointP _ _ dis _); rewrite {}Pp' -{}Pe=> Pp'''.
+      apply/eqP; apply: contra Pp'''=> _; apply/namesfsP.
+      exists p'''; last by apply/namesnP.
+      by apply/dommP; eauto.
+    move=> /(_ p'); rewrite mem_domm unionmE Pv => /(_ erefl).
+    by rewrite Pp' eqxx.
+  suff sub': {subset names (domm h') <= names (domm h1)}.
+    rewrite -eh' in sub' *.
+    by apply/fdisjointP=> i /sub'/(fdisjointP _ _ dis _).
+  suff sub': {subset domm h' <= domm h1}.
+    rewrite -eh' in sub' *.
+    by move=> i /namesfsP [p'' /sub' Pp'' Pi]; apply/namesfsP; eauto.
+  by subst h'; apply/fsubsetP/domm_filter.
 - by move=> _ [<- <-] dis; exists 1; rewrite !rename1.
 - rewrite /= fsubUset=> /andP [sub1 sub2].
   case eval_c1: eval_com=> [ls' h'| |] //= eval_c2 dis.
