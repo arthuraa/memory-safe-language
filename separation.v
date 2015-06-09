@@ -230,7 +230,7 @@ Fixpoint eval_com ls h c k :=
 
     | While e c =>
       if eval_expr ls e is VBool b then
-        eval_com ls h (if b then While e c else Skip) k'
+        eval_com ls h (if b then Seq c (While e c) else Skip) k'
       else Error
     end
   else NotYet.
@@ -434,8 +434,9 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   by rewrite (IH _ _ _ _ _ vars_c2 eval_c2).
 - case: eval_expr=> // - b.
   by rewrite 2!fsubUset -andbA => /and3P [_ vars_c1 vars_c2]; case: b; eauto.
-case: eval_expr=> // - [] P; first by apply: IH.
-by apply: IH; rewrite fsub0set.
+case: eval_expr=> // - [] P; apply: IH.
+  by rewrite /= fsetUC -fsetUA fsetUid.
+by rewrite fsub0set.
 Qed.
 
 Lemma extension ls1 h1 ls2 h2 ls1' h1' c k :
@@ -582,11 +583,12 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   move=> eval_c dis.
   have [pm eval_c' eval_e'] := IH _ _ _ _ _ sub_c eval_c dis.
   by exists pm; rewrite // eval_expr_unionm // eval_e.
-move=> sub_w; move: (sub_w); rewrite /= fsubUset=> /andP [sub_e sub_c].
+rewrite /= fsubUset=> /andP [sub_e sub_c].
 case eval_e: eval_expr=> [b| | |] //=.
-set c' := if b then While e c else Skip.
+set c' := if b then Seq c (While e c) else Skip.
 have sub_c' : fsubset (vars_c c') (domm ls1).
-  by rewrite /c'; case: (b)=> //; rewrite fsub0set.
+  rewrite /c' /=; case: (b)=> //; rewrite ?fsub0set //.
+  by rewrite /= fsetUC -fsetUA fsetUid fsubUset sub_e sub_c.
 move=> eval_c' dis.
 have [pm eval_c'' dis'] := IH _ _ _ _ _ sub_c' eval_c' dis.
 by exists pm; rewrite // eval_expr_unionm // eval_e.
