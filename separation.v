@@ -439,7 +439,7 @@ case: eval_expr=> // - [] P; apply: IH.
 by rewrite fsub0set.
 Qed.
 
-Lemma extension ls1 h1 ls2 h2 ls1' h1' c k :
+Lemma frame_ok ls1 h1 ls2 h2 ls1' h1' c k :
   fsubset (vars_c c) (domm ls1) ->
   eval_com ls1 h1 c k = Done ls1' h1' ->
   fdisjoint (names (domm h1)) (names (domm h2)) ->
@@ -592,6 +592,53 @@ have sub_c' : fsubset (vars_c c') (domm ls1).
 move=> eval_c' dis.
 have [pm eval_c'' dis'] := IH _ _ _ _ _ sub_c' eval_c' dis.
 by exists pm; rewrite // eval_expr_unionm // eval_e.
+Qed.
+
+Lemma frame_loop ls1 h1 ls2 h2 c k :
+  fsubset (vars_c c) (domm ls1) ->
+  eval_com ls1 h1 c k = NotYet ->
+  fdisjoint (names (domm h1)) (names (domm h2)) ->
+  eval_com (unionm ls1 ls2) (unionm h1 h2) c k = NotYet.
+Proof.
+elim: k ls1 h1 c => [//=|k IH] ls1 h1 c.
+case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
+- (* Load *)
+  rewrite fsubU1set=> /andP [Px Pe] /= eval_c dis.
+  case eval_e: eval_expr eval_c=> [| |p|] //.
+  by case get_p: (h1 p)=> [v|] //.
+- (* Store *)
+  rewrite fsubUset=> /andP [Pe Pe'] /= eval_c dis.
+  case eval_e: eval_expr eval_c=> [| |p|] //.
+  by rewrite /updm; case get_p: (h1 p)=> [v|] //=.
+- (* Alloc *)
+  rewrite fsubU1set=> /andP [Px Pe] /=.
+  by case eval_e: eval_expr=> [ | [n|] | |].
+- (* Free *)
+  move=> /= sub; case eval_e: eval_expr=> [| |p|] //=.
+  by case free_p: free=> [h'|].
+- (* Seq *)
+  rewrite /= fsubUset=> /andP [sub1 sub2].
+  case eval_c1: eval_com=> [ls' h'| |] //= eval_c2 dis; last by rewrite IH.
+  have [pm eval_c1' dis'] := frame_ok ls2 sub1 eval_c1 dis.
+  rewrite eval_c1' IH; eauto.
+    rewrite domm_rename renamefsE (eq_imfset (_ : rename pm =1 id)) //.
+    by rewrite imfset_id (eval_com_domm sub1 eval_c1).
+  have [pm' ->] := renaming ls' h' c2 k pm.
+  by rewrite eval_c2.
+- (* If *)
+  rewrite /= 2!fsubUset -andbA=> /and3P [sub_e sub_1 sub_2].
+  case eval_e: eval_expr=> [b| | |] //=.
+  have {sub_1 sub_2} sub_c: fsubset (vars_c (if b then c1 else c2)) (domm ls1).
+    by case: b eval_e.
+  by move=> eval_c dis; rewrite eval_expr_unionm // eval_e IH.
+(* While *)
+rewrite /= fsubUset=> /andP [sub_e sub_c].
+case eval_e: eval_expr=> [b| | |] //=.
+set c' := if b then Seq c (While e c) else Skip.
+have sub_c' : fsubset (vars_c c') (domm ls1).
+  rewrite /c' /=; case: (b)=> //; rewrite ?fsub0set //.
+  by rewrite /= fsetUC -fsetUA fsetUid fsubUset sub_e sub_c.
+by move=> eval_c' dis; rewrite eval_expr_unionm // eval_e IH.
 Qed.
 
 End Def.
