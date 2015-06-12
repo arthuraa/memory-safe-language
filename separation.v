@@ -1,5 +1,6 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.seq.
+Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.choice.
+Require Import Ssreflect.seq.
 
 Require Import MathComp.ssrnum MathComp.ssrint MathComp.ssralg.
 
@@ -85,6 +86,8 @@ Lemma value_of_sumK : cancel value_of_sum sum_of_value.
 Proof. by do ![case=>//]. Qed.
 Definition value_eqMixin := CanEqMixin sum_of_valueK.
 Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
+Definition value_choiceMixin := CanChoiceMixin sum_of_valueK.
+Canonical value_choiceType := Eval hnf in ChoiceType value value_choiceMixin.
 Definition value_partOrdMixin := CanPartOrdMixin sum_of_valueK.
 Canonical value_partOrdType :=
   Eval hnf in PartOrdType value value_partOrdMixin.
@@ -187,6 +190,9 @@ Proof. by do ![case=>//]. Qed.
 
 Definition result_eqMixin := CanEqMixin sum_of_resultK.
 Canonical result_eqType := Eval hnf in EqType result result_eqMixin.
+Definition result_choiceMixin := CanChoiceMixin sum_of_resultK.
+Canonical result_choiceType :=
+  Eval hnf in ChoiceType result result_choiceMixin.
 Definition result_partOrdMixin := CanPartOrdMixin sum_of_resultK.
 Canonical result_partOrdType :=
   Eval hnf in PartOrdType result result_partOrdMixin.
@@ -828,6 +834,42 @@ have sub_c' : fsubset (vars_c c') (domm ls1).
   rewrite /c' /=; case: (b)=> //; rewrite ?fsub0set //.
   by rewrite /= fsetUC -fsetUA fsetUid fsubUset sub_e sub_c.
 by move=> eval_c' disl dish; rewrite IH.
+Qed.
+
+Corollary noninterference ls1 h1 ls21 h21 ls' h' ls22 h22 c k :
+  fsubset (vars_c c) (domm ls1) ->
+  fdisjoint (names (ls1, h1)) (names (domm h21)) ->
+  fdisjoint (names (ls1, h1)) (names (domm h22)) ->
+  eval_com (unionm ls1 ls21) (unionm h1 h21) c k = Done ls' h' ->
+  exists ls1' h1' pm1 pm2,
+    [/\ eval_com ls1 h1 c k = Done ls1' h1',
+        ls' = unionm (rename pm1 ls1') ls21,
+        h' = unionm (rename pm1 h1') h21 &
+        eval_com (unionm ls1 ls22) (unionm h1 h22) c k =
+        Done (unionm (rename pm2 ls1') ls22)
+             (unionm (rename pm2 h1') h22)].
+Proof.
+move=> sub dis1 dis2 eval_c.
+have dis1' : fdisjoint (names (domm h1)) (names (domm h21)).
+  rewrite /fdisjoint fsetIUl -fsubset0 fsubUset/= in dis1.
+  case/andP: dis1=> [_ dis1].
+  rewrite fsetIUl fsubUset in dis1; case/andP: dis1=> [dis1 _].
+  by rewrite /fdisjoint -fsubset0.
+have dis2' : fdisjoint (names (domm h1)) (names (domm h22)).
+  rewrite /fdisjoint fsetIUl -fsubset0 fsubUset/= in dis2.
+  case/andP: dis2=> [_ dis2].
+  rewrite fsetIUl fsubUset in dis2; case/andP: dis2=> [dis2 _].
+  by rewrite /fdisjoint -fsubset0.
+case eval_c': (eval_com ls1 h1 c k) => [ls1' h1'| |].
+- exists ls1', h1'.
+  have [pm1 eval_c1 _] := frame_ok ls21 sub eval_c' dis1'.
+  move: eval_c; rewrite eval_c1=> - [<- <-].
+  have [pm2 eval_c2 _] := frame_ok ls22 sub eval_c' dis2'.
+  by exists pm1, pm2; split; eauto.
+- have eval_c'' := frame_error ls21 sub eval_c' dis1.
+  by rewrite eval_c'' in eval_c.
+have eval_c'' := frame_loop ls21 sub eval_c' dis1'.
+by rewrite eval_c'' in eval_c.
 Qed.
 
 End Def.
