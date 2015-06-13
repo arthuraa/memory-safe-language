@@ -507,7 +507,7 @@ Lemma frame_ok ls1 h1 ls2 h2 ls1' h1' c k :
     Done (unionm (rename pm ls1') ls2)
          (unionm (rename pm h1') h2) &
     fdisjoint (names (domm (rename pm h1'))) (names (domm h2)) &&
-    fsubset (names (rename pm ls1', rename pm h1') :&: names (domm h2))
+    fsubset (names (rename pm ls1', rename pm h1') :&: names h2)
             (names (ls1, h1)).
 Proof.
 elim: k ls1 ls1' h1 h1' c => [//=|k IH] ls1 ls1' h1 h1' c.
@@ -593,9 +593,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
         by move=> /= /namesnP <- _; rewrite in_fsetU1 eqxx.
       by move=> h; rewrite in_fsetU1 orbC h.
     move=> /fsubsetP sub; apply/fdisjointP=> i'' /sub /fsetU1P [->{i''}|].
-      have := freshP (names (unionm ls1 ls2, unionm h1 h2))
-              : i' \notin names (unionm ls1 ls2, unionm h1 h2).
-      apply: contra=> Pi'; apply/fsetUP; right=> /=; apply/namesmP.
+      apply: contra Fi'=> Pi'; apply/fsetUP; right=> /=; apply/namesmP.
       rewrite fdisjointC in dis; move/fdisjointP/(_ _ Pi') in dis.
       case/namesfsP: Pi'=> [p /dommP [v Pv] Pi'].
       have ?: unionm h1 h2 p = Some v.
@@ -611,7 +609,8 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
     rewrite 2!fsetIUl fset0I fsetU0 namesvE /= names_disjointE.
       rewrite fsubUset fsubsetIl /=; apply/fsubsetP=>j /fsetIP [/fset1P ->{j}].
       move=> Pi'; have {Pi'} Pi' : i' \in names (unionm h1 h2).
-        by apply/fsetUP; left; rewrite domm_union namesfsU in_fsetU Pi' orbT.
+        rewrite namesm_union_disjoint 1?in_fsetU ?Pi' ?orbT //.
+        by apply/fdisjoint_names_domm.
       move: (freshP (names (unionm ls1 ls2, unionm h1 h2)) : i' \notin _).
       by rewrite in_fsetU /= Pi' orbT.
     rewrite supp_fperm2; case: ifP => _; first by rewrite /fdisjoint fset0I.
@@ -627,7 +626,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   move=> Pi'; move: Fi'; rewrite in_fsetU /=.
   rewrite (namesm_union_disjoint (fdisjoint_names_domm dis)) negb_or.
   case/andP=> [_]; rewrite in_fsetU negb_or => /andP [_].
-  by rewrite in_fsetU Pi'.
+  by rewrite Pi'.
 - (* Free *)
   move=> /= sub; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
@@ -818,7 +817,8 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
     have dis: names (ls1, h1) :&: names (domm h2) = fset0.
       by rewrite fsetIUl /= (eqP disl) (eqP dish) fsetU0.
     have: fdisjoint (names (rename pm ls', rename pm h')) (names (domm h2)).
-      by rewrite /fdisjoint -fsubset0 -dis fsubsetI fsubsetIr andbT.
+      rewrite /fdisjoint -fsubset0 -dis fsubsetI fsubsetIr andbT.
+      by rewrite (fsubset_trans _ sub) // fsetIS // fsubsetUl.
     rewrite /fdisjoint fsetIUl /= fsetU_eq0=> /andP [??].
     rewrite IH //.
     rewrite -renamem_dom renamefsE (eq_imfset (_ : rename pm =1 id)) //.
