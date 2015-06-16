@@ -507,6 +507,10 @@ case: ifP=> // /mapP [n' Pn'].
 by move=> _ [<-].
 Qed.
 
+Lemma init_block_unionm h1 h2 i n :
+  init_block (unionm h1 h2) i n = unionm (init_block h1 i n) h2.
+Proof. by rewrite /init_block unionmA. Qed.
+
 Lemma frame_ok ls1 h1 ls2 h2 ls1' h1' c k :
   fsubset (vars_c c) (domm ls1) ->
   eval_com true ls1 h1 c k = Done ls1' h1' ->
@@ -582,7 +586,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   exists pm.
     rewrite eval_expr_unionm // eval_e -!lock /= renamem_set.
     rewrite renamevE renamepE /= renamenE fperm2L setm_union.
-    rewrite re_h1 /init_block unionmA; congr Done.
+    rewrite re_h1 init_block_unionm; congr Done.
     congr unionm; apply/eq_partmap=> x'; rewrite 2!setmE renamemE fperm2V.
     have [//|_] := altP eqP.
     case get_x': (ls1 x')=> [v|] //; rewrite renameoE /= names_disjointE //.
@@ -885,10 +889,6 @@ have eval_c'' := frame_loop ls21 sub eval_c' dis1'.
 by rewrite eval_c'' in eval_c.
 Qed.
 
-Lemma init_block_unionm h1 h2 i n :
-  init_block (unionm h1 h2) i n = unionm (init_block h1 i n) h2.
-Proof. admit. Qed.
-
 Lemma frame_weak ls1 h1 ls2 h2 ls' h' c k :
   fsubset (vars_c c) (domm ls1) ->
   fdisjoint (names (ls1, h1)) (names (domm h2)) ->
@@ -965,7 +965,37 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   move: F; rewrite in_fsetU negb_or /= => /andP [_].
   by rewrite namesm_union_disjoint // in_fsetU I orbT.
 - (* Free *)
-  admit.
+  move=> sub dis; rewrite eval_expr_unionm //.
+  case eval_e: eval_expr=> [| |p|] //=.
+  rewrite /free -lock; case: fpickP=> [p' /eqP Pp|] //=.
+  rewrite mem_domm unionmE.
+  have dis': fdisjoint (names (domm h1)) (names (domm h2)).
+    apply/fdisjointP=> i Pi'.
+    by move/fdisjointP: dis; apply; apply/fsetUP; right; apply/fsetUP; left.
+  case get_p': (h1 p') => [v|] /=.
+    move=> _ [<- <-]; exists ls1, (filterm (fun p'' _ => p''.1 != p.1) h1).
+    split=> //.
+      rewrite filterm_union; last by apply fdisjoint_names_domm.
+      congr unionm; apply/eq_partmap=> p''; rewrite filtermE.
+      case get_p'': (h2 p'')=> [v'|] //=.
+      have [Pp'|] //= := altP eqP.
+      have names_p: p.1 \in names (domm h1).
+        apply/namesfsP; exists p'; first by rewrite mem_domm get_p'.
+        by rewrite -Pp; rewrite in_fsetU; apply/orP; left; apply/namesnP.
+      move/fdisjointP: dis'=> /(_ _ names_p).
+      suff ->: p.1 \in names (domm h2) by [].
+      apply/namesfsP; exists p''; first by rewrite mem_domm get_p''.
+      by rewrite -Pp'; rewrite in_fsetU; apply/orP; left; apply/namesnP.
+    rewrite fsetIUl fsetUSS //= ?fsubsetIl //.
+    by apply/(fsubset_trans (fsubsetIl _ _))/namesm_filter.
+  case get_p'': (h2 p') => [v'|] //= _.
+  move: (eval_expr_names false ls1 e); rewrite eval_e namesvE.
+  move=> /fsubsetP/(_ p.1); rewrite in_fset1 eqxx=> /(_ erefl) Pp'.
+  rewrite fdisjointC in dis; move/fdisjointP/(_ p.1): dis.
+  have h: p.1 \in names (domm h2).
+    apply/namesfsP; exists p'; first by rewrite mem_domm get_p''.
+    by rewrite -Pp in_fsetU; apply/orP; left; apply/namesnP.
+  by rewrite in_fsetU Pp' /= => /(_ h).
 - (* Skip *)
   move=> _ ? [<- <-]; do 3!eexists; eauto.
   exact: fsubsetIl.
