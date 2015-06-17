@@ -514,36 +514,37 @@ Proof. by rewrite /init_block unionmA. Qed.
 Lemma frame_ok ls1 h1 ls2 h2 ls1' h1' c k :
   fsubset (vars_c c) (domm ls1) ->
   eval_com true ls1 h1 c k = Done ls1' h1' ->
+  fdisjoint (domm ls1) (domm ls2) ->
   fdisjoint (names (domm h1)) (names (domm h2)) ->
   exists2 pm,
     eval_com true (unionm ls1 ls2) (unionm h1 h2) c k =
     Done (unionm (rename pm ls1') ls2)
          (unionm (rename pm h1') h2) &
     fdisjoint (names (domm (rename pm h1'))) (names (domm h2)) &&
-    fsubset (names (rename pm ls1', rename pm h1') :&: names h2)
+    fsubset (names (rename pm ls1', rename pm h1') :&: names (ls2, h2))
             (names (ls1, h1)).
 Proof.
 elim: k ls1 ls1' h1 h1' c => [//=|k IH] ls1 ls1' h1 h1' c.
 case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
 - (* Assn *)
-  rewrite fsubU1set=> /andP [Px Pe] /= [<- <-] dis_h.
+  rewrite fsubU1set=> /andP [Px Pe] /= [<- <-] dis_l dis_h.
   exists 1; rewrite !rename1 // ?setm_union ?(eval_expr_unionm _ _ Pe) //.
   rewrite dis_h /= fsubIset //; apply/orP; left; rewrite fsetSU //=.
   rewrite (fsubset_trans (namesm_set ls1 x _)) // 2!fsubUset fsubsetxx.
   by rewrite fsub0set eval_expr_names.
 - (* Load *)
-  rewrite fsubU1set=> /andP [Px Pe] /= eval_c dis.
+  rewrite fsubU1set=> /andP [Px Pe] /= eval_c dis_l dis_h.
   case eval_e: eval_expr eval_c=> [| |p|] //.
   case get_p: (h1 p)=> [v|] // [<- <-].
   exists 1; rewrite !rename1.
     by rewrite ?eval_expr_unionm // ?eval_e ?unionmE ?get_p /= setm_union.
-  rewrite dis /= fsubIset //; apply/orP; left.
+  rewrite dis_h /= fsubIset //; apply/orP; left.
   rewrite  // fsubUset /= fsubsetUr andbT.
   rewrite (fsubset_trans (namesm_set ls1 x v)) // -fsetUA fsetUS //=.
   rewrite fsubUset fsub0set /=; apply/fsubsetP=> i Pi.
   by apply/namesmP; eapply PMFreeNamesVal; eauto.
 - (* Store *)
-  rewrite fsubUset=> /andP [Pe Pe'] /= eval_c dis.
+  rewrite fsubUset=> /andP [Pe Pe'] /= eval_c dis_l dis_h.
   case eval_e: eval_expr eval_c=> [| |p|] //.
   rewrite /updm.
   case get_p: (h1 p)=> [v|] //= [<- <-].
@@ -560,7 +561,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   by move: (eval_expr_names true ls1 e); rewrite eval_e.
 - (* Alloc *)
   rewrite fsubU1set=> /andP [Px Pe] /=.
-  case eval_e: eval_expr=> [ | [n|] | |] // [<- <-] dis.
+  case eval_e: eval_expr=> [ | [n|] | |] // [<- <-] dis_l dis_h.
   rewrite /alloc -!lock /=.
   set i := fresh (names (ls1, h1)).
   set i' := fresh (names (unionm ls1 ls2, unionm h1 h2)).
@@ -607,12 +608,12 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
       by move=> h; rewrite in_fsetU1 orbC h.
     move=> /fsubsetP sub; apply/fdisjointP=> i'' /sub /fsetU1P [->{i''}|].
       apply: contra Fi'=> Pi'; apply/fsetUP; right=> /=; apply/namesmP.
-      rewrite fdisjointC in dis; move/fdisjointP/(_ _ Pi') in dis.
+      rewrite fdisjointC in dis_h; move/fdisjointP/(_ _ Pi') in dis_h.
       case/namesfsP: Pi'=> [p /dommP [v Pv] Pi'].
       have ?: unionm h1 h2 p = Some v.
         rewrite unionmE; case get_h1: (h1 p) => [v'|] //=.
         suff : ~~ true by [].
-        apply: contra dis=> _; apply/namesfsP; exists p=>//.
+        apply: contra dis_h=> _; apply/namesfsP; exists p=>//.
         by apply/dommP; eauto.
       by eapply PMFreeNamesKey; eauto.
     by move: i''; apply/fdisjointP.
@@ -620,12 +621,14 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
     rewrite renamem_set renamevE renamepE /= renamenE fperm2L.
     rewrite (fsubset_trans (fsetSI _ (namesm_set _ _ _))) //.
     rewrite 2!fsetIUl fset0I fsetU0 namesvE /= names_disjointE.
-      rewrite fsubUset fsubsetIl /=; apply/fsubsetP=>j /fsetIP [/fset1P ->{j}].
-      move=> Pi'; have {Pi'} Pi' : i' \in names (unionm h1 h2).
-        rewrite namesm_union_disjoint 1?in_fsetU ?Pi' ?orbT //.
-        by apply/fdisjoint_names_domm.
-      move: (freshP (names (unionm ls1 ls2, unionm h1 h2)) : i' \notin _).
-      by rewrite in_fsetU /= Pi' orbT.
+      rewrite fsubUset fsubsetIl /=.
+      rewrite (_ : _ :&: _ = fset0) ?fsub0set //.
+      apply/eqP/fdisjointP=> ? /fset1P ->.
+      apply: contra Fi'; rewrite in_fsetU /= => Pi'.
+      rewrite in_fsetU /= namesm_union_disjoint //.
+      rewrite namesm_union_disjoint // ?fdisjoint_names_domm //.
+      rewrite in_fsetU orbC in_fsetU.
+      by case/orP: Pi'=> [->|->]; rewrite !orbT.
     rewrite supp_fperm2; case: ifP => _; first by rewrite /fdisjoint fset0I.
     apply/fdisjointP=> i'' /fset2P [->|->] {i''}.
       by apply: contra Fi; rewrite (in_fsetU _ (names ls1)) => ->.
@@ -637,19 +640,22 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   rewrite fsetU1E fsetIUl fsubUset fsubsetIl andbT.
   apply/fsubsetP=> i'' /fsetIP [/fset1P -> {i''}].
   move=> Pi'; move: Fi'; rewrite in_fsetU /=.
-  rewrite (namesm_union_disjoint (fdisjoint_names_domm dis)) negb_or.
-  case/andP=> [_]; rewrite in_fsetU negb_or => /andP [_].
-  by rewrite Pi'.
+  rewrite (namesm_union_disjoint dis_l).
+  rewrite (namesm_union_disjoint (fdisjoint_names_domm dis_h)) negb_or.
+  rewrite in_fsetU negb_or.
+  rewrite in_fsetU in Pi'; case/orP: Pi'.
+    by move=> /= ->; rewrite andbF.
+  by move=> /= Pi' /andP [_]; rewrite in_fsetU Pi' orbT.
 - (* Free *)
   move=> /= sub; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
-  case free_p: free=> [h'|] // [<- <-] // dis.
+  case free_p: free=> [h'|] // [<- <-] // dis_l dis_h.
   have dis': fdisjoint (domm h1) (domm h2).
     apply/fdisjointP=> p' Pp'.
     have {Pp'} Pp': p'.1 \in names (domm h1).
       apply/namesfsP; exists p'=> //.
       by rewrite in_fsetU; apply/orP; left; apply/namesnP.
-    move: (fdisjointP _ _ dis _ Pp'); apply: contra=> {Pp'} Pp'.
+    move: (fdisjointP _ _ dis_h _ Pp'); apply: contra=> {Pp'} Pp'.
     by apply/namesfsP; exists p'=> //; apply/namesnP.
   move: free_p; rewrite /free -!lock.
   case: fpickP=> [p' /eqP Pp' /dommP [v Pv]|] //= [eh'].
@@ -663,7 +669,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
       have: p'.1 \in names (domm h1).
         apply/namesfsP; exists p'; last by apply/namesnP.
         by apply/dommP; eauto.
-      move=> /(fdisjointP _ _ dis _); rewrite {}Pp' -{}Pe=> Pp'''.
+      move=> /(fdisjointP _ _ dis_h _); rewrite {}Pp' -{}Pe=> Pp'''.
       apply/eqP; apply: contra Pp'''=> _; apply/namesfsP.
       exists p'''; last by apply/namesnP.
       by apply/dommP; eauto.
@@ -676,17 +682,22 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   rewrite (fsubset_trans (fsetSI _ (namesm_filter _ h1))) //.
   by rewrite fsubsetIl.
 - (* Skip *)
-  by move=> _ [<- <-] dis; exists 1; rewrite !rename1 // dis fsubsetIl.
+  by move=> _ [<- <-] dis_l dis_h; exists 1;
+  rewrite !rename1 // dis_h fsubsetIl.
 - (* Seq *)
   rewrite /= fsubUset=> /andP [sub1 sub2].
-  case eval_c1: eval_com=> [ls' h'| |] //= eval_c2 dis.
-  have [pm eval_c1' /andP [dis' sub']] := IH _ _ _ _ _ sub1 eval_c1 dis.
+  case eval_c1: eval_com=> [ls' h'| |] //= eval_c2 dis_l dis_h.
+  have [pm eval_c1' /andP [dis' sub']] :=
+    IH _ _ _ _ _ sub1 eval_c1 dis_l dis_h.
   have [pm' eval_c2'] := renaming ls' h' c2 k pm.
   rewrite eval_c2 renamerE in eval_c2'.
   rewrite -(eval_com_domm sub1 eval_c1)
            (_ : domm ls' = domm (rename pm ls')) in sub2; last first.
     by rewrite -renamem_dom renamefsE -{1}(imfset_id (domm ls')).
-  have [pm'' eval_c2'' /andP [dis'' sub'']] := IH _ _ _ _ _ sub2 eval_c2' dis'.
+  have [|pm'' eval_c2'' /andP [dis'' sub'']] :=
+    IH _ _ _ _ _ sub2 eval_c2' _ dis'.
+    rewrite -renamem_dom (eval_com_domm sub1 eval_c1) renamefsE.
+    by rewrite (eq_imfset (_ : rename pm =1 id)) ?imfset_id //.
   exists (pm'' * pm'); rewrite -!renameD // ?eval_c1' //.
   apply/andP; split=> //; rewrite (fsubset_trans _ sub') // fsubsetI.
   by rewrite sub'' fsubsetIr.
@@ -695,8 +706,8 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   case eval_e: eval_expr=> [b| | |] //=.
   have {sub_1 sub_2} sub_c: fsubset (vars_c (if b then c1 else c2)) (domm ls1).
     by case: b eval_e.
-  move=> eval_c dis.
-  have [pm eval_c' eval_e'] := IH _ _ _ _ _ sub_c eval_c dis.
+  move=> eval_c dis_l dis_h.
+  have [pm eval_c' eval_e'] := IH _ _ _ _ _ sub_c eval_c dis_l dis_h.
   by exists pm; rewrite // eval_expr_unionm // eval_e.
 (* While *)
 rewrite /= fsubUset=> /andP [sub_e sub_c].
@@ -705,25 +716,26 @@ set c' := if b then Seq c (While e c) else Skip.
 have sub_c' : fsubset (vars_c c') (domm ls1).
   rewrite /c' /=; case: (b)=> //; rewrite ?fsub0set //.
   by rewrite /= fsetUC -fsetUA fsetUid fsubUset sub_e sub_c.
-move=> eval_c' dis.
-have [pm eval_c'' dis'] := IH _ _ _ _ _ sub_c' eval_c' dis.
+move=> eval_c' dis_l dis_h.
+have [pm eval_c'' dis'] := IH _ _ _ _ _ sub_c' eval_c' dis_l dis_h.
 by exists pm; rewrite // eval_expr_unionm // eval_e.
 Qed.
 
 Lemma frame_loop ls1 h1 ls2 h2 c k :
   fsubset (vars_c c) (domm ls1) ->
   eval_com true ls1 h1 c k = NotYet ->
+  fdisjoint (domm ls1) (domm ls2) ->
   fdisjoint (names (domm h1)) (names (domm h2)) ->
   eval_com true (unionm ls1 ls2) (unionm h1 h2) c k = NotYet.
 Proof.
 elim: k ls1 h1 c => [//=|k IH] ls1 h1 c.
 case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
 - (* Load *)
-  rewrite fsubU1set=> /andP [Px Pe] /= eval_c dis.
+  rewrite fsubU1set=> /andP [Px Pe] /= eval_c dis_l dis_h.
   case eval_e: eval_expr eval_c=> [| |p|] //.
   by case get_p: (h1 p)=> [v|] //.
 - (* Store *)
-  rewrite fsubUset=> /andP [Pe Pe'] /= eval_c dis.
+  rewrite fsubUset=> /andP [Pe Pe'] /= eval_c dis_l dis_h.
   case eval_e: eval_expr eval_c=> [| |p|] //.
   by rewrite /updm; case get_p: (h1 p)=> [v|] //=.
 - (* Alloc *)
@@ -734,19 +746,22 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
   by case free_p: free=> [h'|].
 - (* Seq *)
   rewrite /= fsubUset=> /andP [sub1 sub2].
-  case eval_c1: eval_com=> [ls' h'| |] //= eval_c2 dis; last by rewrite IH.
-  have [pm eval_c1' /andP [dis' _]] := frame_ok ls2 sub1 eval_c1 dis.
+  case eval_c1: eval_com=> [ls' h'| |] //= eval_c2 dis_l dis_h;
+    last by rewrite IH.
+  have [pm eval_c1' /andP [dis' _]] := frame_ok sub1 eval_c1 dis_l dis_h.
   rewrite eval_c1' IH; eauto.
-    rewrite -renamem_dom renamefsE (eq_imfset (_ : rename pm =1 id)) //.
+  - rewrite -renamem_dom renamefsE (eq_imfset (_ : rename pm =1 id)) //.
     by rewrite imfset_id (eval_com_domm sub1 eval_c1).
-  have [pm' ->] := renaming ls' h' c2 k pm.
-  by rewrite eval_c2.
+  - have [pm' ->] := renaming ls' h' c2 k pm.
+    by rewrite eval_c2.
+  rewrite -renamem_dom (eval_com_domm sub1 eval_c1) renamefsE.
+  by rewrite (eq_imfset (_ : rename pm =1 id)) ?imfset_id //.
 - (* If *)
   rewrite /= 2!fsubUset -andbA=> /and3P [sub_e sub_1 sub_2].
   case eval_e: eval_expr=> [b| | |] //=.
   have {sub_1 sub_2} sub_c: fsubset (vars_c (if b then c1 else c2)) (domm ls1).
     by case: b eval_e.
-  by move=> eval_c dis; rewrite eval_expr_unionm // eval_e IH.
+  by move=> eval_c dis_l dis_h; rewrite eval_expr_unionm // eval_e IH.
 (* While *)
 rewrite /= fsubUset=> /andP [sub_e sub_c].
 case eval_e: eval_expr=> [b| | |] //=.
@@ -754,23 +769,24 @@ set c' := if b then Seq c (While e c) else Skip.
 have sub_c' : fsubset (vars_c c') (domm ls1).
   rewrite /c' /=; case: (b)=> //; rewrite ?fsub0set //.
   by rewrite /= fsetUC -fsetUA fsetUid fsubUset sub_e sub_c.
-by move=> eval_c' dis; rewrite eval_expr_unionm // eval_e IH.
+by move=> eval_c' dis_l dis_h; rewrite eval_expr_unionm // eval_e IH.
 Qed.
 
 Lemma frame_error ls1 h1 ls2 h2 c k :
   fsubset (vars_c c) (domm ls1) ->
   eval_com true ls1 h1 c k = Error ->
+  fdisjoint (domm ls1) (domm ls2) ->
   fdisjoint (names (ls1, h1)) (names (domm h2)) ->
   eval_com true (unionm ls1 ls2) (unionm h1 h2) c k = Error.
 Proof.
-move=> sub eval_c dis.
+move=> sub eval_c disl' dis.
 have [disl dish] : fdisjoint (names ls1) (names (domm h2)) /\
                    fdisjoint (names h1) (names (domm h2)).
   by move: dis; rewrite /fdisjoint fsetIUl /= fsetU_eq0=> /andP []; eauto.
-elim: k ls1 h1 c sub eval_c disl dish {dis} => [//=|k IH] ls1 h1 c.
+elim: k ls1 h1 c sub eval_c disl' disl dish {dis} => [//=|k IH] ls1 h1 c.
 case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
 - (* Load *)
-  rewrite fsubU1set=> /andP [Px Pe] /= eval_c /fdisjointP disl dish.
+  rewrite fsubU1set=> /andP [Px Pe] /= eval_c disl' /fdisjointP disl dish.
   rewrite eval_expr_unionm //.
   case eval_e: eval_expr eval_c=> [| |p|] //.
   rewrite unionmE; case get_p: (h1 p)=> [v|] //= _.
@@ -780,7 +796,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
     by rewrite mem_domm get_p'.
   by apply/fsetUP; left; apply/namesnP.
 - (* Store *)
-  rewrite fsubUset=> /andP [Pe Pe'] /= eval_c /fdisjointP disl dish.
+  rewrite fsubUset=> /andP [Pe Pe'] /= eval_c disl' /fdisjointP disl dish.
   rewrite eval_expr_unionm //.
   case eval_e: eval_expr eval_c=> [| |p|] //.
   rewrite eval_expr_unionm // /updm unionmE.
@@ -797,7 +813,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
 - (* Free *)
   move=> /= sub; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
-  case free_p: free=> [h'|] // _ /fdisjointP disl dish.
+  case free_p: free=> [h'|] // _ disl' /fdisjointP disl dish.
   have dis': fdisjoint (domm h1) (domm h2).
     apply/fdisjointP=> p' Pp'.
     have {Pp'} Pp': p'.1 \in names (domm h1).
@@ -819,30 +835,32 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
   apply/namesfsP; exists p''; first by rewrite mem_domm get_p''.
   by apply/namesnP.
 - (* Seq *)
-  rewrite /= fsubUset=> /andP [sub1 sub2] eval_c disl dish.
+  rewrite /= fsubUset=> /andP [sub1 sub2] eval_c disl' disl dish.
   have dish': fdisjoint (names (domm h1)) (names (domm h2)).
     by move: dish; rewrite /fdisjoint namesmE fsetIUl fsetU_eq0=> /andP [].
-  case eval_c1: eval_com eval_c=> [ls' h'| |] //= eval_c2.
-    have [pm eval_c1' /andP [dis' sub]] := frame_ok ls2 sub1 eval_c1 dish'.
-    rewrite eval_c1'.
-    have [pm' eval_c2'] := renaming ls' h' c2 k pm.
-    rewrite eval_c2 renamerE in eval_c2'.
-    have dis: names (ls1, h1) :&: names (domm h2) = fset0.
-      by rewrite fsetIUl /= (eqP disl) (eqP dish) fsetU0.
-    have: fdisjoint (names (rename pm ls', rename pm h')) (names (domm h2)).
-      rewrite /fdisjoint -fsubset0 -dis fsubsetI fsubsetIr andbT.
-      by rewrite (fsubset_trans _ sub) // fsetIS // fsubsetUl.
-    rewrite /fdisjoint fsetIUl /= fsetU_eq0=> /andP [??].
-    rewrite IH //.
+  case eval_c1: eval_com eval_c=> [ls' h'| |] //= eval_c2; last by rewrite IH.
+  have [pm eval_c1' /andP [dis' sub]] := frame_ok sub1 eval_c1 disl' dish'.
+  rewrite eval_c1'.
+  have [pm' eval_c2'] := renaming ls' h' c2 k pm.
+  rewrite eval_c2 renamerE in eval_c2'.
+  have dis: names (ls1, h1) :&: names (domm h2) = fset0.
+    by rewrite fsetIUl /= (eqP disl) (eqP dish) fsetU0.
+  have: fdisjoint (names (rename pm ls', rename pm h')) (names (domm h2)).
+    rewrite /fdisjoint -fsubset0 -dis fsubsetI fsubsetIr andbT.
+    rewrite (fsubset_trans _ sub) // fsetIS // fsubsetU //=.
+    by rewrite fsubsetUl orbT.
+  rewrite /fdisjoint fsetIUl /= fsetU_eq0=> /andP [??].
+  rewrite IH //.
     rewrite -renamem_dom renamefsE (eq_imfset (_ : rename pm =1 id)) //.
     by rewrite imfset_id (eval_com_domm sub1 eval_c1).
-  by rewrite IH //.
+  rewrite -renamem_dom (eval_com_domm sub1 eval_c1) renamefsE.
+  by rewrite (eq_imfset (_ : rename pm =1 id)) ?imfset_id //.
 - (* If *)
   rewrite /= 2!fsubUset -andbA=> /and3P [sub_e sub_1 sub_2].
   rewrite eval_expr_unionm //; case eval_e: eval_expr=> [b| | |] //=.
   have {sub_1 sub_2} sub_c: fsubset (vars_c (if b then c1 else c2)) (domm ls1).
     by case: b eval_e.
-  by move=> eval_c disl dish; rewrite IH.
+  by move=> eval_c disl' disl dish; rewrite IH.
 (* While *)
 rewrite /= fsubUset=> /andP [sub_e sub_c].
 rewrite eval_expr_unionm //; case eval_e: eval_expr=> [b| | |] //=.
@@ -850,12 +868,14 @@ set c' := if b then Seq c (While e c) else Skip.
 have sub_c' : fsubset (vars_c c') (domm ls1).
   rewrite /c' /=; case: (b)=> //; rewrite ?fsub0set //.
   by rewrite /= fsetUC -fsetUA fsetUid fsubUset sub_e sub_c.
-by move=> eval_c' disl dish; rewrite IH.
+by move=> eval_c' disl' disl dish; rewrite IH.
 Qed.
 
 Corollary noninterference ls1 h1 ls21 h21 ls' h' ls22 h22 c k :
   fsubset (vars_c c) (domm ls1) ->
+  fdisjoint (domm ls1) (domm ls21) ->
   fdisjoint (names (ls1, h1)) (names (domm h21)) ->
+  fdisjoint (domm ls1) (domm ls22) ->
   fdisjoint (names (ls1, h1)) (names (domm h22)) ->
   eval_com true (unionm ls1 ls21) (unionm h1 h21) c k = Done ls' h' ->
   exists ls1' h1' pm1 pm2,
@@ -866,7 +886,7 @@ Corollary noninterference ls1 h1 ls21 h21 ls' h' ls22 h22 c k :
         Done (unionm (rename pm2 ls1') ls22)
              (unionm (rename pm2 h1') h22)].
 Proof.
-move=> sub dis1 dis2 eval_c.
+move=> sub disl1 dis1 disl2 dis2 eval_c.
 have dis1' : fdisjoint (names (domm h1)) (names (domm h21)).
   rewrite /fdisjoint fsetIUl -fsubset0 fsubUset/= in dis1.
   case/andP: dis1=> [_ dis1].
@@ -879,13 +899,13 @@ have dis2' : fdisjoint (names (domm h1)) (names (domm h22)).
   by rewrite /fdisjoint -fsubset0.
 case eval_c': (eval_com true ls1 h1 c k) => [ls1' h1'| |].
 - exists ls1', h1'.
-  have [pm1 eval_c1 _] := frame_ok ls21 sub eval_c' dis1'.
+  have [pm1 eval_c1 _] := frame_ok sub eval_c' disl1 dis1'.
   move: eval_c; rewrite eval_c1=> - [<- <-].
-  have [pm2 eval_c2 _] := frame_ok ls22 sub eval_c' dis2'.
+  have [pm2 eval_c2 _] := frame_ok sub eval_c' disl2 dis2'.
   by exists pm1, pm2; split; eauto.
-- have eval_c'' := frame_error ls21 sub eval_c' dis1.
+- have eval_c'' := frame_error sub eval_c' disl1 dis1.
   by rewrite eval_c'' in eval_c.
-have eval_c'' := frame_loop ls21 sub eval_c' dis1'.
+have eval_c'' := frame_loop sub eval_c' disl1 dis1'.
 by rewrite eval_c'' in eval_c.
 Qed.
 
