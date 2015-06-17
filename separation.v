@@ -233,8 +233,9 @@ Fixpoint eval_com safe ls h c k :=
 
     | Free e =>
       if eval_expr safe ls e is VPtr p then
-        if free h p.1 is Some h' then
-          Done ls h'
+        if p.2 == 0 then
+          if free h p.1 is Some h' then Done ls h'
+          else Error
         else Error
       else Error
 
@@ -384,6 +385,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
   by rewrite renamenE -Pi fpermK.
 - exists pm; rewrite /eval_com -rename_eval_expr.
   case: (eval_expr true ls e) => // p; rewrite renamevE.
+  have [|] := altP eqP=> //;
   by rewrite renamepE /= -rename_free; case: (free _ _) => [h'|] //=.
 - by exists pm.
 - have /= [pm' ->] := IH ls h c1 pm.
@@ -451,7 +453,8 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsetU1E fsubsetUr.
-- by case: eval_expr => // p; case: free=> // h'' _ [<- _].
+- case: eval_expr => // p.
+  by have [|]:= altP eqP=> // _; case: free=> // h'' _ [<- _].
 - congruence.
 - case eval_c1: eval_com=> [ls'' h''| | ] //.
   rewrite fsubUset=> /andP [vars_c1 vars_c2] eval_c2.
@@ -649,6 +652,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c].
 - (* Free *)
   move=> /= sub; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
+  have [|] := altP eqP=> // _.
   case free_p: free=> [h'|] // [<- <-] // dis_l dis_h.
   have dis': fdisjoint (domm h1) (domm h2).
     apply/fdisjointP=> p' Pp'.
@@ -743,6 +747,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
   by case eval_e: eval_expr=> [ | [n|] | |].
 - (* Free *)
   move=> /= sub; case eval_e: eval_expr=> [| |p|] //=.
+  have [|] := altP eqP => // _.
   by case free_p: free=> [h'|].
 - (* Seq *)
   rewrite /= fsubUset=> /andP [sub1 sub2].
@@ -813,6 +818,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //.
 - (* Free *)
   move=> /= sub; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
+  have [|] := altP eqP=> // _.
   case free_p: free=> [h'|] // _ disl' /fdisjointP disl dish.
   have dis': fdisjoint (domm h1) (domm h2).
     apply/fdisjointP=> p' Pp'.
@@ -996,6 +1002,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - (* Free *)
   move=> sub disl dish; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
+  have [|] := altP eqP=> // _.
   rewrite /free -lock; case: fpickP=> [p' /eqP Pp|] //=.
   rewrite mem_domm unionmE.
   have dish': fdisjoint (names (domm h1)) (names (domm h2)).
