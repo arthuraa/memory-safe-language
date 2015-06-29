@@ -27,12 +27,10 @@ Definition int_ordMixin :=
 Canonical int_ordType :=
   Eval hnf in OrdType int int_ordMixin.
 
-Definition int_nominalMixin := TrivialNominalMixin int.
-Canonical int_nominalType := Eval hnf in NominalType int int_nominalMixin.
-
-Definition string_nominalMixin := TrivialNominalMixin string.
-Canonical string_nominalType :=
-  Eval hnf in NominalType string string_nominalMixin.
+Canonical int_nominalType :=
+  Eval hnf in [nominalType for int by //].
+Canonical int_trivialNominalType :=
+  Eval hnf in [trivialNominalType for int].
 
 Inductive binop : Type :=
 | Add | Mul | Sub | Eq | Leq | And | Or.
@@ -335,7 +333,7 @@ Lemma rename_eval_expr pm ls e :
   eval_expr true (rename pm ls) e.
 Proof.
 elim: e=> [x|n|b e1 IH1 e2 IH2| |e IH] //=.
-  rewrite renamemE /= [rename _ x]/rename /= /trivial_rename /=.
+  rewrite renamemE /= renameT.
   by case: (ls x)=> [v|] //=.
 by rewrite rename_eval_binop IH1 IH2.
 Qed.
@@ -1142,15 +1140,39 @@ by rewrite !renamepE !renamem_union.
 Qed.
 
 Definition vars_s (s : state) : {fset string} :=
-  elim_bound (fun _ s => domm s.1) s.
+  expose (mapb (fun s => domm s.1) s).
 
 Lemma vars_sE A ls h : vars_s (mask A (ls, h)) = domm ls.
 Proof.
-rewrite /vars_s maskE elim_boundE //=; first exact: fsubsetIr.
-by move=> pm _; rewrite -renamem_dom renamefsE imfset_id.
+rewrite /vars_s /= mapbE ?exposeE //.
+by move=> pm /= {ls h} [ls h] /=; rewrite -renamem_dom.
 Qed.
 
 Definition emp : state := mask fset0 (emptym, emptym).
+
+Lemma stateu0s : left_id emp stateu.
+Proof.
+apply: bound_left_id=> /=.
+  move=> /= s [[ls1 h1] [ls2 h2]] /=.
+  by rewrite renamepE /= !renamem_union.
+by move=> [ls h] /=; rewrite !union0m.
+Qed.
+
+Lemma stateus0 : right_id emp stateu.
+Proof.
+apply: bound_right_id=> /=.
+  move=> /= s [[ls1 h1] [ls2 h2]] /=.
+  by rewrite renamepE /= !renamem_union.
+by move=> [ls h] /=; rewrite !unionm0.
+Qed.
+
+Lemma stateuA : associative stateu.
+Proof.
+apply: bound_associative => /=.
+  move=> /= s [[ls1 h1] [ls2 h2]] /=.
+  by rewrite renamepE /= !renamem_union.
+by move=> [ls1 h1] [ls2 h2] [ls3 h3] /=; rewrite !unionmA.
+Qed.
 
 Definition bound_assn (x : string) (e : expr) : state -> state :=
   mapb (assn (basic_sem true) x e).
@@ -1177,36 +1199,8 @@ rewrite mapbE /= ?setm_union // ?eval_expr_unionm //.
 exact: bound_assn_ok.
 Qed.
 
-Definition bound_option (T : nominalType) : {bound option T} -> option {bound T} :=
-  elim_bound (fun A x => omap (mask A) x).
-
-Lemma bound_optionS (T : nominalType) A (x : T) :
-  bound_option (mask A (Some x)) = Some (mask A x).
-Proof.
-rewrite /bound_option [in LHS]maskE [in RHS]maskE elim_boundE //.
-  by exact: fsubsetIr.
-move=> s dis; rewrite renameoE /=; congr Some; apply/maskP.
-  exact: fsubsetIr.
-by exists s.
-Qed.
-
-Lemma bound_optionN (T : nominalType) A :
-  bound_option (mask A None) = None :> option {bound T}.
-Proof.
-by rewrite /bound_option [in LHS]maskE elim_boundE //.
-Qed.
-
-Lemma rename_bound_option (T : nominalType) s (bx : {bound option T}) :
-  rename s (bound_option bx) = bound_option (rename s bx).
-Proof.
-case: bx / boundP=> [A [x|] sub].
-  rewrite bound_optionS renameoE !renamebE /= bound_optionS.
-  by rewrite renamebE.
-by rewrite bound_optionN renameoE renamebE bound_optionN.
-Qed.
-
 Definition bound_load x e : state -> option state :=
-  @bound_option _ \o mapb (load (basic_sem true) x e).
+  @obound _ \o mapb (load (basic_sem true) x e).
 
 Lemma bound_load_ok x e : equivariant (load (basic_sem true) x e).
 Proof.
@@ -1237,10 +1231,10 @@ rewrite /bound_load /= mapbE /=;
 move: (mutfreshEl (bound_load_ok x e) mf)=> /=.
 rewrite stateuE // mapbE //=; last exact: bound_load_ok.
 rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; try by rewrite bound_optionN.
+case eval_e: eval_expr => [| |p|] //; try by rewrite oboundE.
 rewrite unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; try by rewrite bound_optionN.
-by rewrite !bound_optionS => - [<-]; rewrite stateuE // ?setm_union.
+case get_p: (h1 p)=> [v|] //= mf'; rewrite !oboundE //.
+by move => - [<-]; rewrite stateuE // ?setm_union.
 Qed.
 
 Lemma bound_load_frame_error x e s1 s2 :
@@ -1256,11 +1250,10 @@ rewrite objsE=> dis; rewrite /bound_load /= mapbE /=;
 move: (mutfreshEl (bound_load_ok x e) mf)=> /=.
 rewrite stateuE // mapbE //=; last exact: bound_load_ok.
 rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; try by rewrite !bound_optionN.
+case eval_e: eval_expr => [| |p|] //; rewrite ?oboundE //.
 rewrite unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; try by rewrite bound_optionN.
-  by rewrite bound_optionS.
-move=> {get_p} _; case get_p: (h2 p) => [v|]; try by rewrite bound_optionN.
+case get_p: (h1 p)=> [v|] //= mf'; rewrite ?oboundE.
+move=> {get_p} _; case get_p: (h2 p) => [v|]; rewrite ?oboundE //.
 move: (eval_expr_names true ls1 e); rewrite eval_e namesvE.
 have inNh2: p.1 \in names (domm h2).
   apply/namesfsP; exists p; first by rewrite mem_domm get_p.
@@ -1277,7 +1270,7 @@ Qed.
 (* Store *)
 
 Definition bound_store e e' : state -> option state :=
-  @bound_option _ \o mapb (store (basic_sem true) e e').
+  @obound _ \o mapb (store (basic_sem true) e e').
 
 Lemma bound_store_ok e e' : equivariant (store (basic_sem true) e e').
 Proof.
@@ -1298,10 +1291,10 @@ rewrite /bound_store /= mapbE /=; last exact: bound_store_ok.
 move: (mutfreshEl (bound_store_ok e e') mf)=> /=.
 rewrite stateuE // mapbE //=; last exact: bound_store_ok.
 rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; try by rewrite bound_optionN.
+case eval_e: eval_expr => [| |p|] //; rewrite ?oboundE //.
 rewrite /updm unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; try by rewrite bound_optionN.
-rewrite !bound_optionS => - [<-]; rewrite stateuE // ?setm_union.
+case get_p: (h1 p)=> [v|] //= mf'; rewrite ?oboundE //.
+move => - [<-]; rewrite stateuE // ?setm_union.
 by rewrite eval_expr_unionm.
 Qed.
 
@@ -1318,11 +1311,10 @@ rewrite objsE=> dis; rewrite /bound_store /= mapbE /=;
 move: (mutfreshEl (bound_store_ok e e') mf)=> /=.
 rewrite stateuE // mapbE //=; last exact: bound_store_ok.
 rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; try by rewrite !bound_optionN.
+case eval_e: eval_expr => [| |p|] //; rewrite ?oboundE //.
 rewrite /updm unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; try by rewrite bound_optionN.
-  by rewrite bound_optionS.
-move=> {get_p} _; case get_p: (h2 p) => [v|]; try by rewrite bound_optionN.
+case get_p: (h1 p)=> [v|] //= mf'; rewrite ?oboundE //.
+move=> {get_p} _; case get_p: (h2 p) => [v|]; rewrite ?oboundE //.
 move: (eval_expr_names true ls1 e); rewrite eval_e namesvE.
 have inNh2: p.1 \in names (domm h2).
   apply/namesfsP; exists p; first by rewrite mem_domm get_p.
@@ -1336,5 +1328,70 @@ case/and3P: mf=> [_ _ /fsubsetP/(_ p.1)].
 by rewrite in_fsetI inNs1 inNs2=> /(_ erefl) => /fsetIP [].
 Qed.
 
+Definition locval (x : string) (v : value) : state :=
+  locked (mask (names v) (setm emptym x v, emptym)).
+
+Definition blockat (i : name) (vs : seq value) : state :=
+  locked (mask (names vs) (emptym, mkpartmap [seq ((i, Posz p.1), p.2) |
+                                              p <- zip (iota 0 (size vs)) vs])).
+
+Definition newblock (x : string) (n : nat) : state :=
+  new fset0 (fun i => locval x (VPtr (i, Posz 0)) *
+                      blockat i (nseq n (VNum (Posz 0)))).
+
+Definition eval_nat e (s : locals * heap) :=
+  if eval_expr true s.1 e is VNum (Posz n) then Some n
+  else None.
+
+Lemma rename_eval_nat e pm s :
+  rename pm (eval_nat e s) = eval_nat e (rename pm s).
+Proof.
+rewrite /eval_nat -rename_eval_expr; case: eval_expr=> //.
+by case=> [n|] //.
+Qed.
+
+Definition bound_eval_nat e : state -> option nat :=
+  locked (@expose _ \o mapb (eval_nat e)).
+
+Lemma bound_eval_natE e A s : bound_eval_nat e (mask A s) = eval_nat e s.
+Proof.
+rewrite /bound_eval_nat -lock /=.
+rewrite mapbE; last exact: rename_eval_nat.
+by case: eval_nat=> [n|] //; rewrite exposeE.
+Qed.
+
+Lemma rename_bound_eval_nat e : equivariant (bound_eval_nat e).
+Proof.
+rewrite /bound_eval_nat -lock; apply/equivariant_comp.
+  apply/rename_expose.
+by apply/rename_mapb/rename_eval_nat.
+Qed.
+
+Definition bound_alloc x e (s : state) : option state :=
+  if bound_eval_nat e s is Some n then Some (newblock x n * s)
+  else None.
+
+Lemma bound_alloc_ok x e s1 s1' s2 :
+  fsubset (x |: vars_e e) (vars_s s1) ->
+  bound_alloc x e s1 = Some s1' ->
+  bound_alloc x e (s1 * s2) = Some (s1' * s2).
+Proof.
+case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+rewrite vars_sE fsubU1set => /andP [x_in vars].
+rewrite /bound_alloc {1}stateuE // 2!bound_eval_natE /eval_nat /=.
+rewrite eval_expr_unionm //; case: eval_expr=> [|[n|]| |] // [<-].
+by rewrite stateuA.
+Qed.
+
+Lemma bound_alloc_error x e s1 s2 :
+  fsubset (x |: vars_e e) (vars_s s1) ->
+  bound_alloc x e s1 = None ->
+  bound_alloc x e (s1 * s2) = None.
+Proof.
+case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+rewrite vars_sE fsubU1set => /andP [x_in vars].
+rewrite /bound_alloc {1}stateuE // 2!bound_eval_natE /eval_nat /=.
+by rewrite eval_expr_unionm //; case: eval_expr=> [|[n|]| |] // [<-].
+Qed.
 
 End Def.
