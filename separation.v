@@ -1139,6 +1139,13 @@ rewrite mapb2E //= => {ls1 h1 ls2 h2 mf} /= pm [[ls1 h1] [ls2 h2]] /=.
 by rewrite !renamepE !renamem_union.
 Qed.
 
+Lemma rename_stateu pm (s1 s2 : state) :
+  rename pm (s1 * s2) = rename pm s1 * rename pm s2.
+Proof.
+rewrite rename_mapb2 //= => {pm s1 s2} pm /= [[ls1 h1] [ls2 h2]] /=.
+by rewrite !renamepE !renamem_union.
+Qed.
+
 Definition vars_s (s : state) : {fset string} :=
   expose (mapb (fun s => domm s.1) s).
 
@@ -1331,13 +1338,79 @@ Qed.
 Definition locval (x : string) (v : value) : state :=
   locked (mask (names v) (setm emptym x v, emptym)).
 
+Lemma names_locval x v : names (locval x v) = names v.
+Proof.
+rewrite /locval -lock namesbE //; apply/fsubsetU/orP; left=> /=.
+apply/fsubsetP=> n inN; apply/namesmP.
+have get_x: setm emptym x v x = Some v by rewrite setmE eqxx.
+eapply PMFreeNamesVal; eauto.
+Qed.
+
+Lemma rename_locval s x v :
+  rename s (locval x v) = locval x (rename s v).
+Proof.
+rewrite /locval -!lock renamebE names_rename renamefsE; congr mask.
+by rewrite renamepE /= renamem_set renameT !renamem_empty.
+Qed.
+
 Definition blockat (i : name) (vs : seq value) : state :=
-  locked (mask (names vs) (emptym, mkpartmap [seq ((i, Posz p.1), p.2) |
-                                              p <- zip (iota 0 (size vs)) vs])).
+  locked (mask (i |: names vs)
+               (emptym, mkpartmapf (fun p => nth VNil vs (absz p.2))
+                                   [seq (i, Posz n) | n <- iota 0 (size vs)])).
+
+Lemma names_blockat i vs :
+  names (blockat i vs) =
+  if nilp vs then fset0 else i |: names vs.
+Proof.
+rewrite /blockat -lock; case: ifPn=> [/nilP -> /=|vs0n].
+  rewrite maskE fsetIUr /= !namesm_empty !fsetI0 fsetU0 namesbE //.
+  exact: fsub0set.
+rewrite namesbE //; apply/fsubsetU/orP; right=> /=.
+apply/fsubsetP=> i' /fsetU1P [{i'}->|].
+  rewrite namesmE; apply/fsetUP; left; apply/namesfsP.
+  exists (i, Posz 0); last by rewrite in_fsetU in_fset1 eqxx.
+  rewrite mem_domm mkpartmapE.
+  by case: vs vs0n=> [|v vs] //= _; rewrite eqxx.
+case/namessP=> v in_vs inN.
+rewrite namesmE; apply/fsetUP; right; apply/namesfsP.
+exists v=> //; apply/codommP.
+exists (i, Posz (find (pred1 v) vs)).
+rewrite mkpartmapfE mem_map; last by move=> n m /= [<-].
+rewrite mem_iota leq0n /= add0n -has_find.
+have in_vs' : has (pred1 v) vs by rewrite has_pred1.
+by rewrite in_vs'; congr Some; apply/eqP/(nth_find VNil in_vs').
+Qed.
+
+Lemma rename_blockat s i vs :
+  rename s (blockat i vs) = blockat (s i) (rename s vs).
+Proof.
+rewrite /blockat -!lock renamebE renamefsE imfsetU1 names_rename.
+congr mask; rewrite renamepE /= renamem_empty; congr pair.
+rewrite renamem_mkpartmapf; apply/eq_partmap=> /= - [i' p].
+rewrite !mkpartmapfE renamesE -map_comp /= renameT renames_nth.
+by rewrite renamevE size_map.
+Qed.
 
 Definition newblock (x : string) (n : nat) : state :=
   new fset0 (fun i => locval x (VPtr (i, Posz 0)) *
                       blockat i (nseq n (VNum (Posz 0)))).
+
+Lemma names_newblock x n : names (newblock x n) = fset0.
+Proof.
+rewrite /newblock; move: (fresh _) (freshP fset0)=> i nin.
+have equi: equivariant (fun i => locval x (VPtr (i, Posz 0)) *
+                                 blockat i (nseq n (VNum 0))).
+  move=> {i nin} /= s i.
+  rewrite rename_stateu rename_locval rename_blockat renamevE.
+  have /eq_in_map e: {in nseq n (VNum 0), rename s =1 id}.
+    by move=> v /nseqP [-> _].
+  by rewrite renamesE e map_id.
+rewrite (newE nin); last by apply/equivariant_finsupp.
+rewrite names_hide; apply/eqP; rewrite -fsubset0; apply/fsubsetP=> i'.
+move/fsubsetP: (equivariant_names equi i)=> sub.
+rewrite in_fsetD1=> /andP [ne /sub/namesnP ?]; subst i'.
+by rewrite eqxx in ne.
+Qed.
 
 Definition eval_nat e (s : locals * heap) :=
   if eval_expr true s.1 e is VNum (Posz n) then Some n
@@ -1370,6 +1443,14 @@ Qed.
 Definition bound_alloc x e (s : state) : option state :=
   if bound_eval_nat e s is Some n then Some (newblock x n * s)
   else None.
+
+Lemma rename_bound_alloc x e : equivariant (bound_alloc x e).
+Proof.
+move=> pm /= s; rewrite /bound_alloc -rename_bound_eval_nat.
+case: bound_eval_nat=> [n|] //=.
+rewrite renameoE /= rename_stateu renameT; congr Some; congr stateu.
+by apply/names0P/eqP/names_newblock.
+Qed.
 
 Lemma bound_alloc_ok x e s1 s1' s2 :
   fsubset (x |: vars_e e) (vars_s s1) ->
