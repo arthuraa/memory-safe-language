@@ -347,6 +347,20 @@ Lemma renamerE (T : nominalType) pm (r : result T) :
   end.
 Proof. by case: r. Qed.
 
+Local Open Scope fset_scope.
+Local Open Scope fperm_scope.
+
+Lemma fdisjoint_names_domm h1 h2 :
+  fdisjoint (names (domm h1)) (names (domm h2)) ->
+  fdisjoint (domm h1) (domm h2).
+Proof.
+move=> /fdisjointP dis; apply/fdisjointP=> p Pp.
+have /dis Pi: p.1 \in names (domm h1).
+  by apply/namesfsP; exists p=> //=; apply/namesnP.
+apply: contra Pi=> Pi; apply/namesfsP; exists p=> //.
+by apply/namesnP.
+Qed.
+
 Lemma rename_free_fun pm h i :
   rename pm (free_fun h i) = free_fun (rename pm h) (rename pm i).
 Proof.
@@ -358,9 +372,6 @@ rewrite renameoE /= renamem_filter; congr Some.
 apply: eq_filterm=> p _ /=.
 by rewrite (can2_eq (renameKV pm) (renameK pm)).
 Qed.
-
-Local Open Scope fset_scope.
-Local Open Scope fperm_scope.
 
 Fixpoint vars_e e :=
   match e with
@@ -417,17 +428,6 @@ case: safe IH=> //.
 by case: (eval_expr _ _ _)=> [b|n|p|]; rewrite fsub0set.
 Qed.
 
-Lemma fdisjoint_names_domm h1 h2 :
-  fdisjoint (names (domm h1)) (names (domm h2)) ->
-  fdisjoint (domm h1) (domm h2).
-Proof.
-move=> /fdisjointP dis; apply/fdisjointP=> p Pp.
-have /dis Pi: p.1 \in names (domm h1).
-  by apply/namesfsP; exists p=> //=; apply/namesnP.
-apply: contra Pi=> Pi; apply/namesfsP; exists p=> //.
-by apply/namesnP.
-Qed.
-
 Lemma names_init_block h i n :
   fsubset (names (init_block h i n)) (i |: names h).
 Proof.
@@ -469,11 +469,11 @@ by rewrite !renamepE !renamem_union.
 Qed.
 
 Definition vars_s (s : state) : {fset string} :=
-  expose (mapb (fun s => domm s.1) s).
+  locked (@expose _ \o mapb (fun s => domm s.1)) s.
 
 Lemma vars_sE A ls h : vars_s (mask A (ls, h)) = domm ls.
 Proof.
-rewrite /vars_s /= mapbE ?exposeE //.
+rewrite /vars_s /= -lock /= mapbE ?exposeE //.
 by move=> pm /= {ls h} [ls h] /=; rewrite -renamem_dom.
 Qed.
 
@@ -503,54 +503,6 @@ apply: bound_associative => /=.
 by move=> [ls1 h1] [ls2 h2] [ls3 h3] /=; rewrite !unionmA.
 Qed.
 
-Definition bound_assn (x : string) (e : expr) : state -> state :=
-  mapb (assn (basic_sem true) x e).
-
-Lemma bound_assn_ok x e : equivariant (assn (basic_sem true) x e).
-Proof.
-move=> pm /= [ls h] /=.
-by rewrite renamepE /= renamem_set rename_eval_expr.
-Qed.
-
-Lemma rename_bound_assn x e : equivariant (bound_assn x e).
-Proof.
-by rewrite /bound_assn; apply/rename_mapb/bound_assn_ok.
-Qed.
-
-Lemma bound_assn_frame x e s1 s2 :
-  fsubset (x |: vars_e e) (vars_s s1) ->
-  bound_assn x e s1 * s2 = bound_assn x e (s1 * s2).
-Proof.
-case: s1 s2 / (bound2P s1 s2) => /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
-rewrite vars_sE /bound_assn mapbE; last exact: bound_assn_ok.
-have sub1': fsubset (names (setm ls1 x (eval_expr true ls1 e))) (names ls1).
-  apply/(fsubset_trans (namesm_set _ _ _)).
-  by rewrite fsetU0 fsubUset fsubsetxx /= eval_expr_names.
-rewrite stateuE //=; first last.
-  apply/(mutfreshEl (bound_assn_ok _ _) mf).
-rewrite fsubU1set=> /andP [inD inV]; rewrite stateuE //.
-rewrite mapbE /= ?setm_union // ?eval_expr_unionm //.
-exact: bound_assn_ok.
-Qed.
-
-Definition bound_load x e : state -> option state :=
-  @obound _ \o mapb (load (basic_sem true) x e).
-
-Lemma bound_load_ok x e : equivariant (load (basic_sem true) x e).
-Proof.
-move=> /= pm [ls1 h1] /=.
-rewrite -rename_eval_expr; case: eval_expr=> [| |p|] //=.
-rewrite renamemE renameK; case: (h1 p)=> [v|] //=.
-by rewrite renameoE /= renamepE /= renamem_set.
-Qed.
-
-Lemma rename_bound_load x e : equivariant (bound_load x e).
-Proof.
-apply/equivariant_comp.
-  by apply/rename_obound.
-by apply/rename_mapb/bound_load_ok.
-Qed.
-
 Definition objs (s : state) : {fset name} :=
   names (mapb (fun s => domm s.2) s).
 
@@ -560,6 +512,82 @@ rewrite /objs /= mapbE /= 1?maskE 1?namesbE ?fsubsetIr //.
 by move=> pm {ls h} /= [ls h]; rewrite renamem_dom.
 Qed.
 
+Lemma mutfresh_eval_expr A1 ls1 h1 A2 ls2 h2 e p :
+  mutfresh A1 (ls1, h1) A2 (ls2, h2) ->
+  eval_expr true ls1 e = VPtr p ->
+  A2 :&: names (domm h2) = fset0 ->
+  h2 p = None.
+Proof.
+move=> mf eval_e dis; case get_p: (h2 p)=> [v|] //.
+move: (eval_expr_names true ls1 e); rewrite eval_e namesvE.
+have inNh2: p.1 \in names (domm h2).
+  apply/namesfsP; exists p; first by rewrite mem_domm get_p.
+  by apply/fsetUP; left; apply/namesnP.
+rewrite fsub1set=> inNls1.
+suff: p.1 \in A2 :&: names (domm h2) by rewrite dis.
+rewrite in_fsetI inNh2 andbT.
+have inNs1: p.1 \in names (ls1, h1) by rewrite in_fsetU inNls1.
+have inNs2: p.1 \in names (ls2, h2) by rewrite !in_fsetU inNh2 orbT.
+case/and3P: mf=> [_ _ /fsubsetP/(_ p.1)].
+by rewrite in_fsetI inNs1 inNs2=> /(_ erefl) => /fsetIP [].
+Qed.
+
+Definition bound_assn (x : string) (e : expr) : state -> state :=
+  mapb (assn (basic_sem true) x e).
+
+Lemma rename_assn x e : equivariant (assn (basic_sem true) x e).
+Proof.
+move=> pm /= [ls h] /=.
+by rewrite renamepE /= renamem_set rename_eval_expr.
+Qed.
+
+Lemma bound_assnE x e A s :
+  bound_assn x e (mask A s) = mask A (assn (basic_sem true) x e s).
+Proof. by rewrite /bound_assn mapbE //; apply/rename_assn. Qed.
+
+Lemma rename_bound_assn x e : equivariant (bound_assn x e).
+Proof. by rewrite /bound_assn; apply/rename_mapb/rename_assn. Qed.
+
+Lemma bound_assn_frame x e s1 s2 :
+  fsubset (x |: vars_e e) (vars_s s1) ->
+  bound_assn x e s1 * s2 = bound_assn x e (s1 * s2).
+Proof.
+case: s1 s2 / (bound2P s1 s2) => /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+rewrite vars_sE bound_assnE.
+have sub1': fsubset (names (setm ls1 x (eval_expr true ls1 e))) (names ls1).
+  apply/(fsubset_trans (namesm_set _ _ _)).
+  by rewrite fsetU0 fsubUset fsubsetxx /= eval_expr_names.
+rewrite stateuE //=; first last.
+  apply/(mutfreshEl (rename_assn _ _) mf).
+rewrite fsubU1set=> /andP [inD inV]; rewrite stateuE //.
+by rewrite bound_assnE //= setm_union eval_expr_unionm.
+Qed.
+
+Definition bound_load x e : state -> option state :=
+  @obound _ \o mapb (load (basic_sem true) x e).
+
+Lemma rename_load x e : equivariant (load (basic_sem true) x e).
+Proof.
+move=> /= pm [ls1 h1] /=.
+rewrite -rename_eval_expr; case: eval_expr=> [| |p|] //=.
+rewrite renamemE renameK; case: (h1 p)=> [v|] //=.
+by rewrite renameoE /= renamepE /= renamem_set.
+Qed.
+
+Lemma bound_loadE x e A s :
+  bound_load x e (mask A s) = omap (mask A) (load (basic_sem true) x e s).
+Proof.
+rewrite /bound_load /= mapbE; last exact: rename_load.
+by rewrite oboundE.
+Qed.
+
+Lemma rename_bound_load x e : equivariant (bound_load x e).
+Proof.
+apply/equivariant_comp.
+  by apply/rename_obound.
+by apply/rename_mapb/rename_load.
+Qed.
+
 Lemma bound_load_frame_ok x e s1 s1' s2 :
   fsubset (x |: vars_e e) (vars_s s1) ->
   bound_load x e s1 = Some s1' ->
@@ -567,14 +595,10 @@ Lemma bound_load_frame_ok x e s1 s1' s2 :
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE fsubU1set=> /andP [x_in vars].
-rewrite /bound_load /= mapbE /=;
-  last exact: bound_load_ok.
-move: (mutfreshEl (bound_load_ok x e) mf)=> /=.
-rewrite stateuE // mapbE //=; last exact: bound_load_ok.
-rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; try by rewrite oboundE.
-rewrite unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; rewrite !oboundE //.
+rewrite !bound_loadE /=; move: (mutfreshEl (rename_load x e) mf)=> /=.
+rewrite stateuE // bound_loadE /= eval_expr_unionm //.
+case eval_e: eval_expr => [| |p|] //; rewrite unionmE.
+case get_p: (h1 p)=> [v|] //= mf'.
 by move => - [<-]; rewrite stateuE // ?setm_union.
 Qed.
 
@@ -586,26 +610,12 @@ Lemma bound_load_frame_error x e s1 s2 :
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE fsubU1set=> /andP [x_in vars].
-rewrite objsE=> dis; rewrite /bound_load /= mapbE /=;
-  last exact: bound_load_ok.
-move: (mutfreshEl (bound_load_ok x e) mf)=> /=.
-rewrite stateuE // mapbE //=; last exact: bound_load_ok.
-rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; rewrite ?oboundE //.
-rewrite unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; rewrite ?oboundE.
-move=> {get_p} _; case get_p: (h2 p) => [v|]; rewrite ?oboundE //.
-move: (eval_expr_names true ls1 e); rewrite eval_e namesvE.
-have inNh2: p.1 \in names (domm h2).
-  apply/namesfsP; exists p; first by rewrite mem_domm get_p.
-  by apply/fsetUP; left; apply/namesnP.
-rewrite fsub1set=> inNls1.
-suff: p.1 \in A2 :&: names (domm h2) by rewrite dis.
-rewrite in_fsetI inNh2 andbT.
-have inNs1: p.1 \in names (ls1, h1) by rewrite in_fsetU inNls1.
-have inNs2: p.1 \in names (ls2, h2) by rewrite !in_fsetU inNh2 orbT.
-case/and3P: mf=> [_ _ /fsubsetP/(_ p.1)].
-by rewrite in_fsetI inNs1 inNs2=> /(_ erefl) => /fsetIP [].
+rewrite objsE=> dis; rewrite bound_loadE /=.
+move: (mutfreshEl (rename_load x e) mf)=> /=.
+rewrite stateuE // bound_loadE //= eval_expr_unionm //.
+case eval_e: eval_expr => [| |p|] //; rewrite unionmE.
+case get_p: (h1 p)=> [v|] //= mf' _ {get_p}.
+by rewrite (mutfresh_eval_expr mf eval_e).
 Qed.
 
 (* Store *)
@@ -613,7 +623,7 @@ Qed.
 Definition bound_store e e' : state -> option state :=
   @obound _ \o mapb (store (basic_sem true) e e').
 
-Lemma bound_store_ok e e' : equivariant (store (basic_sem true) e e').
+Lemma rename_store e e' : equivariant (store (basic_sem true) e e').
 Proof.
 move=> /= pm [ls1 h1] /=.
 rewrite -rename_eval_expr; case: eval_expr=> [| |p|] //=.
@@ -621,11 +631,17 @@ rewrite /updm renamemE renameK; case: (h1 p)=> [v|] //=.
 by rewrite renameoE /= renamepE /= renamem_set rename_eval_expr.
 Qed.
 
+Lemma bound_storeE e e' A s :
+  bound_store e e' (mask A s) = omap (mask A) (store (basic_sem true) e e' s).
+Proof.
+rewrite /bound_store /= mapbE; last by apply: rename_store.
+by rewrite oboundE.
+Qed.
+
 Lemma rename_bound_store e e' : equivariant (bound_store e e').
 Proof.
-apply/equivariant_comp.
-  by apply/rename_obound.
-by apply/rename_mapb/bound_store_ok.
+apply/equivariant_comp; first by apply/rename_obound.
+by apply/rename_mapb/rename_store.
 Qed.
 
 Lemma bound_store_frame_ok e e' s1 s1' s2 :
@@ -635,15 +651,12 @@ Lemma bound_store_frame_ok e e' s1 s1' s2 :
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE fsubUset=> /andP [vars vars'].
-rewrite /bound_store /= mapbE /=; last exact: bound_store_ok.
-move: (mutfreshEl (bound_store_ok e e') mf)=> /=.
-rewrite stateuE // mapbE //=; last exact: bound_store_ok.
-rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; rewrite ?oboundE //.
-rewrite /updm unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; rewrite ?oboundE //.
-move => - [<-]; rewrite stateuE // ?setm_union.
-by rewrite eval_expr_unionm.
+rewrite bound_storeE.
+move: (mutfreshEl (rename_store e e') mf)=> /=.
+rewrite stateuE // bound_storeE //= eval_expr_unionm //.
+case eval_e: eval_expr => [| |p|] //; rewrite /updm unionmE.
+case get_p: (h1 p)=> [v|] //= mf'.
+by move => - [<-]; rewrite stateuE // ?setm_union eval_expr_unionm.
 Qed.
 
 Lemma bound_store_frame_error e e' s1 s2 :
@@ -654,26 +667,12 @@ Lemma bound_store_frame_error e e' s1 s2 :
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE fsubUset=> /andP [vars vars'].
-rewrite objsE=> dis; rewrite /bound_store /= mapbE /=;
-  last exact: bound_store_ok.
-move: (mutfreshEl (bound_store_ok e e') mf)=> /=.
-rewrite stateuE // mapbE //=; last exact: bound_store_ok.
-rewrite eval_expr_unionm //.
-case eval_e: eval_expr => [| |p|] //; rewrite ?oboundE //.
-rewrite /updm unionmE.
-case get_p: (h1 p)=> [v|] //= mf'; rewrite ?oboundE //.
-move=> {get_p} _; case get_p: (h2 p) => [v|]; rewrite ?oboundE //.
-move: (eval_expr_names true ls1 e); rewrite eval_e namesvE.
-have inNh2: p.1 \in names (domm h2).
-  apply/namesfsP; exists p; first by rewrite mem_domm get_p.
-  by apply/fsetUP; left; apply/namesnP.
-rewrite fsub1set=> inNls1.
-suff: p.1 \in A2 :&: names (domm h2) by rewrite dis.
-rewrite in_fsetI inNh2 andbT.
-have inNs1: p.1 \in names (ls1, h1) by rewrite in_fsetU inNls1.
-have inNs2: p.1 \in names (ls2, h2) by rewrite !in_fsetU inNh2 orbT.
-case/and3P: mf=> [_ _ /fsubsetP/(_ p.1)].
-by rewrite in_fsetI inNs1 inNs2=> /(_ erefl) => /fsetIP [].
+rewrite objsE=> dis; rewrite bound_storeE /=.
+move: (mutfreshEl (rename_store e e') mf)=> /=.
+rewrite stateuE // bound_storeE //= eval_expr_unionm //.
+case eval_e: eval_expr => [| |p|] //; rewrite /updm unionmE.
+case get_p: (h1 p)=> [v|] //= mf' _.
+by rewrite (mutfresh_eval_expr mf eval_e).
 Qed.
 
 Definition locval (x : string) (v : value) : state :=
@@ -827,11 +826,17 @@ case: ifP=> // _; rewrite -rename_free_fun.
 by case: (free_fun _ _)=> [h'|] //=.
 Qed.
 
+Lemma bound_freeE e A s :
+  bound_free e (mask A s) = omap (mask A) (free (basic_sem true) e s).
+Proof.
+rewrite /bound_free -lock /= mapbE; last exact: rename_free.
+by rewrite oboundE.
+Qed.
+
 Lemma rename_bound_free e : equivariant (bound_free e).
 Proof.
 move=> pm /= s; rewrite /bound_free -lock.
-apply: equivariant_comp.
-  exact: rename_obound.
+apply: equivariant_comp; first exact: rename_obound.
 by apply/rename_mapb/rename_free.
 Qed.
 
@@ -843,17 +848,20 @@ Lemma bound_free_ok e s1 s1' s2 :
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE !objsE => vars dis.
-rewrite /bound_free -lock {1}stateuE // /=.
-rewrite mapbE //=; last exact: rename_free.
-rewrite oboundE mapbE; last exact: rename_free.
-rewrite oboundE eval_expr_unionm //.
+rewrite bound_freeE {1}stateuE // /= bound_freeE /= eval_expr_unionm //.
 case eval_e: eval_expr=> [| |p|] //=.
 case: ifP=> //= _; rewrite /free_fun -!lock.
 rewrite (domm_curry (unionm _ _)) domm_union imfsetU in_fsetU.
 rewrite -domm_curry; case: ifP=> //= inD [<-]; congr Some.
 rewrite stateuE.
   congr mask; congr pair.
-  have dis_h: fdisjoint (names (domm h1)) (names (domm h2)) by admit.
+  have dis_h: fdisjoint (names (domm h1)) (names (domm h2)).
+    rewrite /fdisjoint -fsubset0; apply/fsubsetP=> n /fsetIP [inD1 inD2].
+    case/and3P: mf=> [_ _ /fsubsetP/(_ n)].
+    rewrite in_fsetI in_fsetU /= [in X in _ || X]in_fsetU inD1 orbT /=.
+    rewrite in_fsetU /= [in X in _ || X]in_fsetU inD2 orbT /= => /(_ erefl).
+    case/fsetIP=> [inA1 inA2]; move/eqP: dis=> <-; rewrite !in_fsetI -!andbA.
+    by apply/and4P; split.
   rewrite filterm_union //; last by apply/fdisjoint_names_domm.
   congr unionm; apply/eq_partmap=> p'; rewrite filtermE.
   case get_p': (h2 _) => [v|] //=.
@@ -876,10 +884,7 @@ Lemma bound_free_error e s1 s2 :
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE !objsE => vars dis.
-rewrite /bound_free -lock {1}stateuE // /=.
-rewrite mapbE //=; last exact: rename_free.
-rewrite oboundE mapbE; last exact: rename_free.
-rewrite oboundE eval_expr_unionm //.
+rewrite bound_freeE /= {1}stateuE //= bound_freeE /= eval_expr_unionm //.
 case eval_e: eval_expr=> [| |p|] //=.
 case: ifP=> //= _; rewrite /free_fun -!lock.
 rewrite (domm_curry (unionm _ _)) domm_union imfsetU in_fsetU.
@@ -905,6 +910,15 @@ Lemma rename_eval_cond e : equivariant (eval_cond (basic_sem true) e).
 Proof.
 move=> pm [ls h]; rewrite /= -rename_eval_expr.
 by case: eval_expr=> //.
+Qed.
+
+Lemma bound_eval_condE e A s :
+  bound_eval_cond e (mask A s) =
+  if eval_expr true s.1 e is VBool b then Some b
+  else None.
+Proof.
+rewrite /bound_eval_cond -lock /= mapbE; last exact: rename_eval_cond.
+by rewrite exposeE.
 Qed.
 
 Lemma rename_bound_eval_cond e : equivariant (bound_eval_cond e).
@@ -957,7 +971,45 @@ Lemma bound_eval_com_domm s s' c k :
   fsubset (vars_c c) (vars_s s) ->
   eval_com bound_sem s c k = Done s' ->
   vars_s s' = vars_s s.
-Proof. admit. Qed.
+Proof.
+elim: k s s' c => [|k IH] /= s s'; first by [].
+case: s / boundP=> /= [A [ls h] subs].
+case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
+- rewrite fsubU1set !vars_sE=> /andP [Px Pe] [<-].
+  rewrite bound_assnE /= !vars_sE domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsetU1E fsubsetUr.
+- rewrite bound_loadE /=.
+  case: eval_expr => // p; case: (h p)=> [v|] //=.
+  rewrite fsubU1set !vars_sE=> /andP [Px Pe] [<-]; rewrite !vars_sE domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsetU1E fsubsetUr.
+- rewrite bound_storeE !vars_sE /=.
+  case: eval_expr => // p; rewrite /updm; case: (h p)=> [v|] //=.
+  by rewrite fsubUset=> /andP [Pe Pe'] [<-]; rewrite vars_sE.
+- admit.
+  (*case: eval_expr => // - [n|] //.
+  rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsetU1E fsubsetUr.*)
+- rewrite bound_freeE vars_sE /=; case: eval_expr => // p.
+  have [|]:= altP eqP=> // _; case: free_fun=> // h'' _ [<-].
+  by rewrite vars_sE.
+- congruence.
+- move=> sub; rewrite vars_sE; case eval_c1: (eval_com _ _ _) => [s''| | ] //.
+  move: sub; rewrite fsubUset=> /andP [vars_c1 vars_c2] eval_c2.
+  move: (IH _ _ _ vars_c1 eval_c1); rewrite vars_sE=> e.
+  rewrite vars_sE -e in vars_c2.
+  by rewrite (IH _ _ _ vars_c2 eval_c2).
+- rewrite bound_eval_condE; case: eval_expr=> // - b.
+  by rewrite 2!fsubUset -andbA => /and3P [_ vars_c1 vars_c2]; case: b; eauto.
+rewrite bound_eval_condE; case: eval_expr=> // - [] P; apply: IH.
+  by rewrite /= fsetUC -fsetUA fsetUid.
+by rewrite fsub0set.
+Qed.
 
 Lemma frame_ok s1 s1' s2 c k :
   fsubset (vars_c c) (vars_s s1) ->
