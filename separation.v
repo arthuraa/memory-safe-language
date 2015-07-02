@@ -713,12 +713,17 @@ Qed.
 Definition locval (x : string) (v : value) : state :=
   locked (mask (names v) (setm emptym x v, emptym)).
 
-Lemma vars_s_locval x v : vars_s (locval x v) = fset1 x.
+Notation "x ::= v" := (locval x v)
+  (at level 20) : state_scope.
+
+Local Open Scope state_scope.
+
+Lemma vars_s_locval x v : vars_s (x ::= v) = fset1 x.
 Proof.
 by rewrite /locval -lock vars_sE domm_set domm0 fsetU1E fsetU0.
 Qed.
 
-Lemma names_locval x v : names (locval x v) = names v.
+Lemma names_locval x v : names (x ::= v) = names v.
 Proof.
 rewrite /locval -lock namesbE //; apply/fsubsetU/orP; left=> /=.
 apply/fsubsetP=> n inN; apply/namesmP.
@@ -727,7 +732,7 @@ eapply PMFreeNamesVal; eauto.
 Qed.
 
 Lemma rename_locval s x v :
-  rename s (locval x v) = locval x (rename s v).
+  rename s (x ::= v) = x ::= rename s v.
 Proof.
 rewrite /locval -!lock renamebE names_rename renamefsE; congr mask.
 by rewrite renamepE /= renamem_set renameT !renamem_empty.
@@ -738,13 +743,14 @@ Definition blockat (i : name) (vs : seq value) : state :=
                (emptym, mkpartmapf (fun p => nth VNil vs (absz p.2))
                                    [seq (i, Posz n) | n <- iota 0 (size vs)])).
 
-Lemma vars_s_blockat i vs : vars_s (blockat i vs) = fset0.
-Proof.
-by rewrite /blockat -lock vars_sE domm0.
-Qed.
+Notation "i :-> vs" := (blockat i vs)
+  (at level 20) : state_scope.
+
+Lemma vars_s_blockat i vs : vars_s (i :-> vs) = fset0.
+Proof. by rewrite /blockat -lock vars_sE domm0. Qed.
 
 Lemma names_blockat i vs :
-  names (blockat i vs) =
+  names (i :-> vs) =
   if nilp vs then fset0 else i |: names vs.
 Proof.
 rewrite /blockat -lock; case: ifPn=> [/nilP -> /=|vs0n].
@@ -767,7 +773,7 @@ by rewrite in_vs'; congr Some; apply/eqP/(nth_find VNil in_vs').
 Qed.
 
 Lemma rename_blockat s i vs :
-  rename s (blockat i vs) = blockat (s i) (rename s vs).
+  rename s (i :-> vs) = s i :-> rename s vs.
 Proof.
 rewrite /blockat -!lock renamebE renamefsE imfsetU1 names_rename.
 congr mask; rewrite renamepE /= renamem_empty; congr pair.
@@ -777,7 +783,7 @@ by rewrite renamevE size_map.
 Qed.
 
 Definition newblock_def x n i :=
-  locval x (VPtr (i, Posz 0)) * blockat i (nseq n (VNum (Posz 0))).
+  x ::= VPtr (i, Posz 0) * i :-> nseq n (VNum (Posz 0)).
 
 Lemma rename_newblock_def x n : equivariant (newblock_def x n).
 Proof.
@@ -804,16 +810,9 @@ Qed.
 Lemma names_newblock x n : names (newblock x n) = fset0.
 Proof.
 rewrite /newblock; move: (fresh _) (freshP fset0)=> i nin.
-have equi: equivariant (fun i => locval x (VPtr (i, Posz 0)) *
-                                 blockat i (nseq n (VNum 0))).
-  move=> {i nin} /= s i.
-  rewrite rename_stateu rename_locval rename_blockat renamevE.
-  have /eq_in_map e: {in nseq n (VNum 0), rename s =1 id}.
-    by move=> v /nseqP [-> _].
-  by rewrite renamesE e map_id.
-rewrite (newE nin); last by apply/equivariant_finsupp.
+rewrite (newE nin); last by apply/equivariant_finsupp/rename_newblock_def.
 rewrite names_hide; apply/eqP; rewrite -fsubset0; apply/fsubsetP=> i'.
-move/fsubsetP: (equivariant_names equi i)=> sub.
+move/fsubsetP: (equivariant_names (rename_newblock_def x n) i)=> sub.
 rewrite in_fsetD1=> /andP [ne /sub/namesnP ?]; subst i'.
 by rewrite eqxx in ne.
 Qed.
@@ -1246,7 +1245,7 @@ Definition ptr_of_list i (vs : seq value) :=
 Fixpoint heap_of_list i vs :=
   if vs is v :: vs' then
     new (i |: names vs)
-        (fun i' => blockat i [:: v; ptr_of_list i' vs] *
+        (fun i' => i :-> [:: v; ptr_of_list i' vs] *
                    heap_of_list i' vs')
   else emp.
 
