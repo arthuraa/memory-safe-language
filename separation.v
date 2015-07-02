@@ -2,8 +2,7 @@ Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
 Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.choice.
 Require Import Ssreflect.seq.
 
-Require Import MathComp.ssrnum MathComp.ssrint MathComp.ssralg.
-Require Import MathComp.generic_quotient.
+Require Import MathComp.ssrnum MathComp.ssrint MathComp.ssralg MathComp.bigop.
 
 Require Import CoqUtils.ord CoqUtils.fset CoqUtils.partmap CoqUtils.fperm.
 Require Import CoqUtils.nominal CoqUtils.string.
@@ -485,6 +484,9 @@ by rewrite stateuE // !vars_sE domm_union.
 Qed.
 
 Definition emp : state := mask fset0 (emptym, emptym).
+
+Lemma names_emp : names emp = fset0.
+Proof. by rewrite /emp namesbE // fsub0set. Qed.
 
 Lemma stateu0s : left_id emp stateu.
 Proof.
@@ -1237,6 +1239,16 @@ case eval_c': (eval_com bound_sem s1 c k) => [s1'| |] //=.
 rewrite (frame_loop sub _ eval_c') // in eval_c.
 by rewrite dis1 fdisjointC fdisjoint0.
 Qed.
+
+Definition ptr_of_list i (vs : seq value) :=
+  if nilp vs then VNil else VPtr (i, 0)%R.
+
+Fixpoint heap_of_list i vs :=
+  if vs is v :: vs' then
+    new (i |: names vs)
+        (fun i' => blockat i [:: v; ptr_of_list i' vs] *
+                   heap_of_list i' vs')
+  else emp.
 
 Lemma eval_com_domm safe ls h ls' h' c k :
   fsubset (vars_c c) (domm ls) ->
