@@ -1375,8 +1375,8 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   move=> sub disl dish; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
   have [|] := altP eqP=> // _.
-  rewrite /free_fun -lock; case: fpickP=> [p' /eqP Pp|] //=.
-  rewrite mem_domm unionmE.
+  rewrite /free_fun -lock domm_curry; case: ifP=> [/imfsetP [/= p' inD Pp]|] //=.
+  move: inD; rewrite mem_domm unionmE.
   have dish': fdisjoint (names (domm h1)) (names (domm h2)).
     apply/fdisjointP=> i Pi'.
     by move/fdisjointP: dish; apply; apply/fsetUP; right; apply/fsetUP; left.
@@ -1389,7 +1389,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
       have [Pp'|] //= := altP eqP.
       have names_p: p.1 \in names (domm h1).
         apply/namesfsP; exists p'; first by rewrite mem_domm get_p'.
-        by rewrite -Pp; rewrite in_fsetU; apply/orP; left; apply/namesnP.
+        by rewrite Pp; rewrite in_fsetU; apply/orP; left; apply/namesnP.
       move/fdisjointP: dish'=> /(_ _ names_p).
       suff ->: p.1 \in names (domm h2) by [].
       apply/namesfsP; exists p''; first by rewrite mem_domm get_p''.
@@ -1402,7 +1402,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   rewrite fdisjointC in dish; move/fdisjointP/(_ p.1): dish.
   have h: p.1 \in names (domm h2).
     apply/namesfsP; exists p'; first by rewrite mem_domm get_p''.
-    by rewrite -Pp in_fsetU; apply/orP; left; apply/namesnP.
+    by rewrite Pp in_fsetU; apply/orP; left; apply/namesnP.
   by rewrite in_fsetU Pp' /= => /(_ h).
 - (* Skip *)
   move=> _ ? ? [<- <-]; do 3!eexists; eauto; exact: fsubsetIl.
