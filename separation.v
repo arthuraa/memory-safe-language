@@ -1116,6 +1116,108 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
 by rewrite bound_eval_condE; case: eval_expr=> // - [] P; eauto.
 Qed.
 
+Section RBound.
+
+Variable T : nominalType.
+
+Definition rbound : {bound result T} -> result {bound T} :=
+  locked (elim_bound (fun A r =>
+    match r with
+    | Done r' => Done (mask A r')
+    | Error => Error
+    | NotYet => NotYet
+    end)).
+
+Lemma rboundE A r :
+  rbound (mask A r) = match r with
+                      | Done r' => Done (mask A r')
+                      | Error => Error
+                      | NotYet => NotYet
+                      end.
+Proof.
+rewrite /rbound -lock maskE elim_boundE.
+- by case: r=> [r| |] //; rewrite [in RHS]maskE.
+- exact: fsubsetIr.
+- move=> s; case: r=> [r| |] //= dis.
+  congr Done; apply/maskP; first by apply/fsubsetIr.
+  by exists s.
+Qed.
+
+Lemma rename_rbound : equivariant rbound.
+Proof.
+move=> s /= br; case: br / boundP=> [A [r| |] sub] //=;
+by rewrite renamebE !rboundE //= renamerE renamebE.
+Qed.
+
+End RBound.
+
+Lemma result_of_option_omap T S f x :
+  result_of_option (@omap T S f x) =
+  match result_of_option x with
+  | Done x => Done (f x)
+  | Error => Error
+  | NotYet => NotYet
+  end.
+Proof. by case: x. Qed.
+
+Lemma eval_com_hide n s c k :
+  eval_com bound_sem (hide n s) c k =
+  match eval_com bound_sem s c k with
+  | Done s' => Done (hide n s')
+  | Error => Error
+  | NotYet => NotYet
+  end.
+Proof.
+elim: k s c => /= [|k IH] //= s.
+case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
+- rewrite /bound_assn hide_mapb //.
+  exact: rename_assn.
+- rewrite /bound_load /= -hide_mapb; last exact: rename_load.
+  by rewrite obound_hide result_of_option_omap.
+- rewrite /bound_store /= -hide_mapb; last exact: rename_store.
+  by rewrite obound_hide result_of_option_omap.
+- rewrite /bound_alloc /bound_eval_nat -lock /=.
+  rewrite -hide_mapb; last exact: rename_eval_nat.
+  rewrite hideT; case: (expose _)=> //= sz.
+  rewrite /stateu /= hide_mapb2r //=.
+    by move=> s' [[ls1 h1] [ls2 h2]]; rewrite !renamepE /= !renamem_union.
+  by rewrite names_newblock in_fset0.
+- rewrite /bound_free -lock /= -hide_mapb; last exact: rename_free.
+  by rewrite obound_hide result_of_option_omap.
+- by rewrite IH; case: eval_com.
+- rewrite /bound_eval_cond -lock /= -hide_mapb; last exact: rename_eval_cond.
+  by rewrite hideT; case: (expose _).
+rewrite /bound_eval_cond -lock /= -hide_mapb; last exact: rename_eval_cond.
+by rewrite hideT; case: (expose _).
+Qed.
+
+Lemma eval_com_new_ok A (s s' : name -> state) c k :
+  finsupp A s -> finsupp A s' ->
+  (forall n, n \notin A -> eval_com bound_sem (s n) c k = Done (s' n)) ->
+  eval_com bound_sem (new A s) c k = Done (new A s').
+Proof.
+move=> fs_s fs_s' e; move: (fresh _) (freshP A)=> n ninA.
+by rewrite (newE ninA) // (newE ninA) // eval_com_hide e.
+Qed.
+
+Lemma eval_com_new_error A (s : name -> state) c k :
+  finsupp A s ->
+  (forall n, n \notin A -> eval_com bound_sem (s n) c k = Error) ->
+  eval_com bound_sem (new A s) c k = Error.
+Proof.
+move=> fs_s e; move: (fresh _) (freshP A)=> n ninA.
+by rewrite (newE ninA) // eval_com_hide e.
+Qed.
+
+Lemma eval_com_new_loop A (s : name -> state) c k :
+  finsupp A s ->
+  (forall n, n \notin A -> eval_com bound_sem (s n) c k = NotYet) ->
+  eval_com bound_sem (new A s) c k = NotYet.
+Proof.
+move=> fs_s e; move: (fresh _) (freshP A)=> n ninA.
+by rewrite (newE ninA) // eval_com_hide e.
+Qed.
+
 Theorem frame_ok s1 s1' s2 c k :
   fsubset (vars_c c) (vars_s s1) ->
   fdisjoint (objs s1) (objs s2) ->
