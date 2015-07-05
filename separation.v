@@ -550,7 +550,7 @@ Qed.
 Lemma mutfresh_eval_expr A1 ls1 h1 A2 ls2 h2 e p :
   mutfresh A1 (ls1, h1) A2 (ls2, h2) ->
   eval_expr true ls1 e = VPtr p ->
-  A2 :&: names (domm h2) = fset0 ->
+  fdisjoint A1 (A2 :&: names (domm h2)) ->
   h2 p = None.
 Proof.
 move=> mf eval_e dis; case get_p: (h2 p)=> [v|] //.
@@ -559,12 +559,11 @@ have inNh2: p.1 \in names (domm h2).
   apply/namesfsP; exists p; first by rewrite mem_domm get_p.
   by apply/fsetUP; left; apply/namesnP.
 rewrite fsub1set=> inNls1.
-suff: p.1 \in A2 :&: names (domm h2) by rewrite dis.
-rewrite in_fsetI inNh2 andbT.
 have inNs1: p.1 \in names (ls1, h1) by rewrite in_fsetU inNls1.
 have inNs2: p.1 \in names (ls2, h2) by rewrite !in_fsetU inNh2 orbT.
 case/and3P: mf=> [_ _ /fsubsetP/(_ p.1)].
-by rewrite in_fsetI inNs1 inNs2=> /(_ erefl) => /fsetIP [].
+rewrite in_fsetI inNs1 inNs2=> /(_ erefl) => /fsetIP [inA1 inA2].
+by move/fdisjointP/(_ p.1 inA1): dis; rewrite in_fsetI inA2 inNh2.
 Qed.
 
 Definition bound_assn (x : string) (e : expr) : state -> state :=
@@ -639,13 +638,13 @@ Qed.
 
 Lemma bound_load_frame_error x e s1 s2 :
   fsubset (x |: vars_e e) (vars_s s1) ->
-  objs s2 = fset0 ->
+  fdisjoint (names s1) (objs s2) ->
   bound_load x e s1 = None ->
   bound_load x e (s1 * s2) = None.
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE fsubU1set=> /andP [x_in vars].
-rewrite objsE=> dis; rewrite bound_loadE /=.
+rewrite namesbE // objsE=> dis; rewrite bound_loadE /=.
 move: (mutfreshEl (rename_load x e) mf)=> /=.
 rewrite stateuE // bound_loadE //= eval_expr_unionm //.
 case eval_e: eval_expr => [| |p|] //; rewrite unionmE.
@@ -696,13 +695,13 @@ Qed.
 
 Lemma bound_store_frame_error e e' s1 s2 :
   fsubset (vars_e e :|: vars_e e') (vars_s s1) ->
-  objs s2 = fset0 ->
+  fdisjoint (names s1) (objs s2) ->
   bound_store e e' s1 = None ->
   bound_store e e' (s1 * s2) = None.
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite vars_sE fsubUset=> /andP [vars vars'].
-rewrite objsE=> dis; rewrite bound_storeE /=.
+rewrite namesbE // objsE=> dis; rewrite bound_storeE /=.
 move: (mutfreshEl (rename_store e e') mf)=> /=.
 rewrite stateuE // bound_storeE //= eval_expr_unionm //.
 case eval_e: eval_expr => [| |p|] //; rewrite /updm unionmE.
@@ -948,12 +947,12 @@ Qed.
 
 Lemma bound_free_error e s1 s2 :
   fsubset (vars_e e) (vars_s s1) ->
-  objs s2 = fset0 ->
+  fdisjoint (names s1) (objs s2) ->
   bound_free e s1 = None ->
   bound_free e (s1 * s2) = None.
 Proof.
 case: s1 s2 / bound2P=> /= [A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
-rewrite vars_sE !objsE => vars dis.
+rewrite vars_sE namesbE // !objsE => vars dis.
 rewrite bound_freeE /= {1}stateuE //= bound_freeE /= eval_expr_unionm //.
 case eval_e: eval_expr=> [| |p|] //=.
 case: ifP=> //= _; rewrite /free_fun -!lock.
@@ -968,9 +967,8 @@ have inL: p.1 \in names ls1.
 have inH: p.1 \in names (domm h2).
   rewrite ep; apply/namesfsP; exists p'=> //.
   by apply/fsetUP; left; apply/namesnP.
-rewrite in_fsetI inL in_fsetU inH /= => /(_ erefl)/fsetIP [_ inA].
-have: p.1 \in A2 :&: names (domm h2) by apply/fsetIP; split.
-by rewrite dis in_fset0.
+rewrite in_fsetI inL in_fsetU inH /= => /(_ erefl)/fsetIP [inA1 inA2].
+by move/fdisjointP/(_ p.1 inA1): dis; rewrite in_fsetI inA2 inH.
 Qed.
 
 Definition bound_eval_cond e :=
@@ -1186,7 +1184,7 @@ Qed.
 
 Theorem frame_error s1 s2 c k :
   fsubset (vars_c c) (vars_s s1) ->
-  objs s2 = fset0 ->
+  fdisjoint (names s1) (objs s2) ->
   eval_com bound_sem s1 c k = Error ->
   eval_com bound_sem (s1 * s2) c k = Error.
 Proof.
@@ -1205,7 +1203,11 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
     rewrite (frame_ok sub1 _ eval_c1).
       apply: IH=> //.
       by rewrite (bound_eval_com_domm sub1 eval_c1).
-    by rewrite dis fdisjointC fdisjoint0.
+    apply/(fdisjoint_trans _ dis).
+    rewrite -[names s1'']/(names (Done s1'')) -eval_c1.
+    apply/(@equivariant_names _ _ (fun s => eval_com bound_sem s c1 k))=> /=.
+    move=> ??; exact: rename_bound_sem.
+    by apply/(fdisjoint_trans _ dis)/objs_names.
   by rewrite (IH _ _ sub1 dis eval_c1).
 - rewrite !fsubUset -andbA=> /and3P [sub_e sub1 sub2].
   rewrite bound_eval_cond_frame //.
@@ -1220,7 +1222,7 @@ Qed.
 
 Corollary noninterference s1 s21 s' s22 c k :
   fsubset (vars_c c) (vars_s s1) ->
-  objs s21 = fset0 ->
+  fdisjoint (names s1) (objs s21) ->
   fdisjoint (objs s1) (objs s22) ->
   eval_com bound_sem (s1 * s21) c k = Done s' ->
   exists s1',
@@ -1232,11 +1234,11 @@ move=> sub dis1 dis2 eval_c.
 case eval_c': (eval_com bound_sem s1 c k) => [s1'| |] //=.
 - exists s1'; split; eauto.
     move: eval_c; rewrite (frame_ok sub _ eval_c'); first congruence.
-    by rewrite dis1 fdisjointC fdisjoint0.
+    by apply/(fdisjoint_trans _ dis1)/objs_names.
   by apply: frame_ok=> //.
 - by rewrite (frame_error sub dis1 eval_c') in eval_c.
 rewrite (frame_loop sub _ eval_c') // in eval_c.
-by rewrite dis1 fdisjointC fdisjoint0.
+by apply/(fdisjoint_trans _ dis1)/objs_names.
 Qed.
 
 Definition ptr_of_list i (vs : seq value) :=
