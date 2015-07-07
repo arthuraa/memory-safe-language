@@ -1343,15 +1343,154 @@ rewrite (frame_loop sub _ eval_c') // in eval_c.
 by apply/(fdisjoint_trans _ dis1)/objs_names.
 Qed.
 
-Definition ptr_of_list i (vs : seq value) :=
-  if nilp vs then VNil else VPtr (i, 0)%R.
+Definition lh i (vs : seq value) :=
+  if vs is [::] then VNil else VPtr (i, 0)%R.
 
-Fixpoint heap_of_list i vs :=
+Fixpoint lb i vs :=
   if vs is v :: vs' then
     new (i |: names vs)
-        (fun i' => i :-> [:: v; ptr_of_list i' vs] *
-                   heap_of_list i' vs')
+        (fun i' => i :-> [:: v; lh i' vs] * lb i' vs')
   else emp.
+
+Lemma rename_lh pm i vs :
+  rename pm (lh i vs) = lh (pm i) (rename pm vs).
+Proof. by case: vs. Qed.
+
+Lemma names_lh i vs : names (lh i vs) = if nilp vs then fset0 else fset1 i.
+Proof. by case: vs=> //= _ _; rewrite namesvE. Qed.
+
+(* MOVE *)
+
+Lemma fdisjoints1 T s x : @fdisjoint T s (fset1 x) = (x \notin s).
+Proof.
+apply/fdisjointP; have [ins|nins] /= := boolP (x \in s).
+  by move/(_ _ ins)/fset1P.
+by move=> x' ins'; apply: contra nins=> /fset1P <-.
+Qed.
+
+(* MOVE *)
+
+Lemma fsetDv (T : ordType) (s : {fset T}) : s :\: s = fset0.
+Proof.
+by apply/eqP; rewrite -fsubset0; apply/fsubsetP=> x; rewrite in_fsetD andNb.
+Qed.
+
+Lemma names_stateu s1 s2 :
+  fdisjoint (vars_s s1) (vars_s s2) ->
+  fdisjoint (objs s1) (objs s2) ->
+  names (s1 * s2) = names s1 :|: names s2.
+Proof.
+case: s1 s2 / bound2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+rewrite !vars_sE !objsE stateuE // => dis1 dis2.
+rewrite ![in RHS]namesbE // namesbE //.
+have mf': mutfresh A1 (domm h1) A2 (domm h2).
+  by apply/(mutfreshS mf); apply/fsubsetU/orP; right; apply/fsubsetUl.
+have dis2': fdisjoint (domm h1) (domm h2).
+  apply/fdisjoint_names_domm.
+  rewrite /fdisjoint -fsubset0; apply/fsubsetP=> i Pi.
+  case/and3P: mf'=> [_ _ /fsubsetP/(_ _ Pi)/fsetIP [inA1 inA2]].
+  case/fsetIP: Pi=> [in1 in2].
+  move/fdisjointP/(_ i): dis2; rewrite !in_fsetI inA1 in1 inA2 in2.
+  by move=> /(_ erefl).
+rewrite /names /= /prod_names /= !namesm_union_disjoint //.
+rewrite -fsetUA [names ls2 :|: _]fsetUC -(fsetUA (names h1)).
+by rewrite (fsetUC (names h2)) fsetUA; apply/fsetUSS.
+Qed.
+
+Lemma vars_emp : vars_s emp = fset0.
+Proof. by rewrite /emp vars_sE domm0. Qed.
+
+Lemma objs_emp : objs emp = fset0.
+Proof. by rewrite /emp objsE domm0 fset0I. Qed.
+
+Lemma vars_s_hide n s : vars_s (hide n s) = vars_s s.
+Proof.
+by case: s / boundP=> [A [ls h] sub]; rewrite hideE !vars_sE.
+Qed.
+
+Lemma vars_lb i vs : vars_s (lb i vs) = fset0.
+Proof.
+elim: vs i => /= [|v vs IH] /= i; first by rewrite vars_emp.
+by rewrite /new -lock vars_s_hide vars_s_stateu vars_s_blockat IH fsetU0.
+Qed.
+
+Lemma objs_hide n s : objs (hide n s) = objs s :\ n.
+Proof.
+case: s / boundP=> [A [ls h] sub]; rewrite hideE !objsE.
+by apply/eq_fset=> i; rewrite in_fsetD1 !in_fsetI in_fsetD1 andbA.
+Qed.
+
+Lemma objs_blockat i vs :
+  objs (i :-> vs) = if vs is [::] then fset0 else fset1 i.
+Proof.
+admit.
+Qed.
+
+Lemma objs_lb i vs : objs (lb i vs) = if vs is [::] then fset0 else fset1 i.
+Proof.
+elim: vs i=> //= [|v vs IH] i; first by rewrite objs_emp.
+rewrite /new -lock objs_hide.
+move: (fresh _) (freshP (i |: names (v :: vs)))=> i'.
+rewrite in_fsetU1 namess1 in_fsetU !negb_or => /and3P [ii' iv ivs].
+rewrite objsU IH objs_blockat.
+case: vs {IH ivs} => [|v' vs'] //=.
+  rewrite fsetU0; apply/eq_fset=> i''.
+  rewrite in_fsetD1 in_fset1.
+  have [->|] //= := altP (i'' =P i').
+  by rewrite (negbTE ii').
+apply/eq_fset=> i''; rewrite in_fsetD1 in_fsetU !in_fset1.
+have [->|] //= := altP (i'' =P i').
+  by rewrite (negbTE ii').
+by rewrite orbF.
+Qed.
+
+Lemma names_lb i vs :
+  names (lb i vs) = objs (lb i vs) :|: names vs.
+Proof.
+elim: vs i => [|v vs IH] i /=.
+  by rewrite names_emp objs_emp fset0U namess0.
+rewrite /new -lock.
+move: (fresh _) (freshP (i |: names (v :: vs)))=> i'.
+rewrite namess1 => nin.
+move: (nin); rewrite in_fsetU1 in_fsetU !negb_or=> /and3P [ii' ninv ninvs].
+rewrite names_hide names_stateu; first last.
+  rewrite objs_blockat objs_lb; case: (vs)=> // _ _.
+    by apply/fdisjointP=> i'' /fset1P ->; rewrite in_fset1 eq_sym.
+  by rewrite !vars_s_blockat fdisjoint0.
+rewrite objs_hide objsU objs_blockat names_blockat /= namessE /=.
+rewrite fsetU0 !fsetUA /= namesT fsetU0 fsetU1E namesnE {}IH.
+rewrite !fsetD1U -!fsetUA; congr fsetU.
+rewrite fsetUA fsetUC -!fsetUA; congr fsetU.
+rewrite [fset1 _ :\ _]fsetD1E fsetDv fsetU0 fsetUC; congr fsetU.
+  apply/eqP; rewrite eqEfsubset fsubD1set fsetU1E fsubsetUr /=.
+  apply/fsubsetP=> i'' inv; rewrite in_fsetD1 inv andbT.
+  by apply: contra ninv=> /eqP <-.
+apply/eqP; rewrite eqEfsubset fsubD1set fsetU1E fsubsetUr /=.
+apply/fsubsetP=> i'' inv; rewrite in_fsetD1 inv andbT.
+by apply: contra ninvs=> /eqP <-.
+Qed.
+
+Lemma rename_lb pm i vs :
+  rename pm (lb i vs) = lb (pm i) (rename pm vs).
+Proof.
+elim: vs pm i=> [|v vs IH] pm i /=.
+  by apply/names0P; rewrite names_emp.
+rewrite rename_new; last first.
+  move=> {pm} pm dis /= i'.
+  rewrite rename_stateu rename_blockat /= renamenE IH.
+  move: dis; rewrite fsetU1E namess1 2!fdisjointUr fdisjoints1.
+  case/and3P=> [/suppPn pm_i disv disvs].
+  rewrite pm_i renamesE /= names_disjointE //.
+  by rewrite renamevE renamepE /= (names_disjointE disvs).
+rewrite (_ : pm i |: _ = pm @: (i |: names (v :: vs))); last first.
+  by rewrite imfsetU1 -names_rename renamesE.
+set A := pm @: (i |: _).
+move: (fresh _) (freshP A)=> n ninA /=.
+rewrite /new -!lock /=.
+rewrite rename_stateu rename_blockat renamesE /=.
+rewrite [rename pm (VPtr _)]renamevE renamepE /= renameT.
+by rewrite renameKV IH // renamenE fpermKV.
+Qed.
 
 Lemma eval_com_domm safe ls h ls' h' c k :
   fsubset (vars_c c) (domm ls) ->
