@@ -512,6 +512,24 @@ apply: bound_associative => /=.
 by move=> [ls1 h1] [ls2 h2] [ls3 h3] /=; rewrite !unionmA.
 Qed.
 
+Lemma new_stateul A (f : name -> state) s :
+  finsupp A f ->
+  new A f * s = new (A :|: names s) (fun a => f a * s).
+Proof.
+move=> fs_f; rewrite /stateu /= new_comp2l //=.
+move=> /= {s} pm [[ls1 h1] [ls2 h2]] /=.
+by rewrite renamepE /= !renamem_union.
+Qed.
+
+Lemma new_stateur s A (f : name -> state) :
+  finsupp A f ->
+  s * new A f = new (names s :|: A) (fun a => s * f a).
+Proof.
+move=> fs_f; rewrite /stateu /= new_comp2r //=.
+move=> /= {s} pm [[ls1 h1] [ls2 h2]] /=.
+by rewrite renamepE /= !renamem_union.
+Qed.
+
 Definition objs (s : state) : {fset name} :=
   names (mapb (fun s => domm s.2) s).
 
