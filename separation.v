@@ -1359,22 +1359,6 @@ Proof. by case: vs. Qed.
 Lemma names_lh i vs : names (lh i vs) = if nilp vs then fset0 else fset1 i.
 Proof. by case: vs=> //= _ _; rewrite namesvE. Qed.
 
-(* MOVE *)
-
-Lemma fdisjoints1 T s x : @fdisjoint T s (fset1 x) = (x \notin s).
-Proof.
-apply/fdisjointP; have [ins|nins] /= := boolP (x \in s).
-  by move/(_ _ ins)/fset1P.
-by move=> x' ins'; apply: contra nins=> /fset1P <-.
-Qed.
-
-(* MOVE *)
-
-Lemma fsetDv (T : ordType) (s : {fset T}) : s :\: s = fset0.
-Proof.
-by apply/eqP; rewrite -fsubset0; apply/fsubsetP=> x; rewrite in_fsetD andNb.
-Qed.
-
 Lemma names_stateu s1 s2 :
   fdisjoint (vars_s s1) (vars_s s2) ->
   fdisjoint (objs s1) (objs s2) ->
