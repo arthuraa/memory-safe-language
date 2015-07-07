@@ -1407,7 +1407,17 @@ Qed.
 Lemma objs_blockat i vs :
   objs (i :-> vs) = if vs is [::] then fset0 else fset1 i.
 Proof.
-admit.
+rewrite /blockat -lock /= objsE.
+rewrite (_ : names (domm _) = if vs is [::] then fset0 else fset1 i).
+  case: vs=> [|v vs] /=; first by rewrite fsetI0.
+  apply/eqP; rewrite eqEfsubset fsubsetIr /= fsubsetI fsubsetxx andbT.
+  by rewrite fsetU1E fsubsetUl.
+case: vs=> [|v vs]; first by rewrite domm_mkpartmapf namesfsE /= big_nil.
+rewrite domm_mkpartmapf; apply/eqP; rewrite eqEfsubset; apply/andP; split.
+  apply/fsubsetP=> i' /namesfsP [p]; rewrite in_mkfset.
+  by case: p=> [i'' n] /mapP [n' _ [<- _]].
+rewrite /= namesfsE bigcup_fsetU1; apply/fsubsetU/orP; left.
+by apply/fsubsetU/orP; left; rewrite fsubsetxx.
 Qed.
 
 Lemma objs_lb i vs : objs (lb i vs) = if vs is [::] then fset0 else fset1 i.
