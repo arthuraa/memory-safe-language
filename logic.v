@@ -41,13 +41,13 @@ elim: vs i => /= [|v vs IH] /= i; first by rewrite vars_emp.
 by rewrite /new -lock vars_s_hide vars_s_stateu vars_s_blockat IH fsetU0.
 Qed.
 
-Lemma objs_lb i vs : objs (lb i vs) = if vs is [::] then fset0 else fset1 i.
+Lemma pub_lb i vs : pub (lb i vs) = if vs is [::] then fset0 else fset1 i.
 Proof.
-elim: vs i=> //= [|v vs IH] i; first by rewrite objs_emp.
-rewrite /new -lock objs_hide.
+elim: vs i=> //= [|v vs IH] i; first by rewrite pub_emp.
+rewrite /new -lock pub_hide.
 move: (fresh _) (freshP (i |: names (v :: vs)))=> i'.
 rewrite in_fsetU1 namess1 in_fsetU !negb_or => /and3P [ii' iv ivs].
-rewrite objsU IH objs_blockat.
+rewrite pubU IH pub_blockat.
 case: vs {IH ivs} => [|v' vs'] //=.
   rewrite fsetU0; apply/eq_fset=> i''.
   rewrite in_fsetD1 in_fset1.
@@ -60,19 +60,19 @@ by rewrite orbF.
 Qed.
 
 Lemma names_lb i vs :
-  names (lb i vs) = objs (lb i vs) :|: names vs.
+  names (lb i vs) = pub (lb i vs) :|: names vs.
 Proof.
 elim: vs i => [|v vs IH] i /=.
-  by rewrite names_emp objs_emp fset0U namess0.
+  by rewrite names_emp pub_emp fset0U namess0.
 rewrite /new -lock.
 move: (fresh _) (freshP (i |: names (v :: vs)))=> i'.
 rewrite namess1 => nin.
 move: (nin); rewrite in_fsetU1 in_fsetU !negb_or=> /and3P [ii' ninv ninvs].
 rewrite names_hide names_stateu; first last.
-  rewrite objs_blockat objs_lb; case: (vs)=> // _ _.
+  rewrite pub_blockat pub_lb; case: (vs)=> // _ _.
     by apply/fdisjointP=> i'' /fset1P ->; rewrite in_fset1 eq_sym.
   by rewrite !vars_s_blockat fdisjoint0.
-rewrite objs_hide objsU objs_blockat names_blockat /= namessE /=.
+rewrite pub_hide pubU pub_blockat names_blockat /= namessE /=.
 rewrite fsetU0 !fsetUA /= namesT fsetU0 fsetU1E namesnE {}IH.
 rewrite !fsetD1U -!fsetUA; congr fsetU.
 rewrite fsetUA fsetUC -!fsetUA; congr fsetU.

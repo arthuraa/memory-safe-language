@@ -54,6 +54,8 @@ Inductive com : Type :=
 | If of expr & com & com
 | While of expr & com.
 
+(** Type of pointers. [name] corresponds to an atom, in the nominal
+set sense. *)
 Definition ptr : Type := (name * int)%type.
 
 Inductive value :=
@@ -154,6 +156,12 @@ Definition eval_binop b v1 v2 :=
   | Or, _, _ => VNil
   end%R.
 
+(** Function [eval_expr] computes the value of an expression [e] given
+a local store [ls]. It takes an additional argument [safe] which
+determines how the cast operator is interpreted: when [safe = true],
+cast is just the identity; when [safe = false], cast converts the
+block identifier to an integer. *)
+
 Fixpoint eval_expr safe ls e :=
   match e with
   | Var x => odflt VNil (ls x)
@@ -169,6 +177,11 @@ Fixpoint eval_expr safe ls e :=
 Section Result.
 
 Variable T : Type.
+
+(** Type of results of computations. [Done x] indicates that a
+computation successfully terminated, returning [x] as a
+result. [Error] indicates that an error occurred. [NotYet] indicates
+that the computation ran for too many steps and couldn't complete. *)
 
 Inductive result :=
 | Done of T
@@ -232,6 +245,20 @@ Lemma renamerE (T : nominalType) pm (r : result T) :
   end.
 Proof. by case: r. Qed.
 
+Lemma result_of_option_omap T S f x :
+  result_of_option (@omap T S f x) =
+  match result_of_option x with
+  | Done x => Done (f x)
+  | Error => Error
+  | NotYet => NotYet
+  end.
+Proof. by case: x. Qed.
+
+(** Parametric semantics for our language. The [sem] record lists the
+basic primitives we need to define the semantics over some type [T],
+which are combined by the [eval_com] function below to compute the
+effect of a command on a piece of state. *)
+
 CoInductive sem T := Sem {
   assn : string -> expr -> T -> T;
   load : string -> expr -> T -> option T;
@@ -274,11 +301,15 @@ Fixpoint eval_com T (S : sem T) s c k :=
     end
   else NotYet.
 
+(** The semantics defined as a function is consistent, in the sense
+that increasing the maximum number of steps it can run for can only
+cause it to produce a better result. *)
+
 Definition refine_result (T : eqType) (r1 r2 : result T) :=
   (r1 == NotYet) || (r1 == r2).
 
 Lemma eval_com_leq (T : eqType) (S : sem T) s c k k' :
-  (k <= k')%N ->
+  k <= k' ->
   refine_result (eval_com S s c k) (eval_com S s c k').
 Proof.
 move=> Pk; elim: k' k Pk s c => [|k' IH] [|k] // /IH {IH} IH s.
@@ -290,6 +321,8 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e ct ce|e c] /=; try by rewrite eqxx ?orbT.
 - by case: (eval_cond S e s) => [b|] //=; eauto.
 by case: (eval_cond S e s) => [b|] //=; eauto.
 Qed.
+
+(** Basic, unstructured semantics for our language. *)
 
 Definition basic_sem safe : sem (locals * heap) := {|
   assn x e s :=
@@ -327,6 +360,8 @@ Definition basic_sem safe : sem (locals * heap) := {|
 
 |}.
 
+(** Free variables that occur in a command or expression. *)
+
 Fixpoint vars_e e :=
   match e with
   | Var x => fset1 x
@@ -348,6 +383,8 @@ Fixpoint vars_c c :=
   | If e ct ce => vars_e e :|: vars_c ct :|: vars_c ce
   | While e c => vars_e e :|: vars_c c
   end.
+
+(** Basic lemmas about the semantics *)
 
 Lemma eval_expr_unionm safe ls1 ls2 e :
   fsubset (vars_e e) (domm ls1) ->

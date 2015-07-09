@@ -11,23 +11,23 @@ and MathComp libraries, both in version 1.5.
 ** coq-utils
 
 CoqUtils, as its name suggests, is a basic library of Coq utilities
-based on the Ssreflect and MathComp libraries, trying to follow their
-style. Most of it is of general interest, not being particularly
-relevant to the present development. The exception is the nominal.v
-file, which is a formalization of the theory of nominal sets that we
-used for the rest of our development.
+based on the Ssreflect and MathComp libraries. Most of it is of
+general interest, not being particularly relevant to the present
+development. The exception is the nominal.v file, which is a
+formalization of the theory of nominal sets that we used for the rest
+of our development.
 
 That formalization departs from the way the theory was presented in
 the review of our paper in a few aspects. In particular:
 
 - A nominal set is defined by a Coq structure (in the Ssreflect
-  class-and-mixin style) that is assumed to have decidable equality
-  and a decidable total order relation. Furthermore, we assume that
-  we have a computable function for computing the support of an
-  element (function "names" in the formalization).
+  class-and-mixin style) that is assumed to have a decidable total
+  order relation. Furthermore, we assume that the support of an
+  element can be effectively computed with a function (function
+  "names" in the formalization).
 
 - To avoid using extra axioms (namely, functional extensionality) and
-  violating the above assumptions, we deal with equivariant functions
+  violating the above requirements, we deal with equivariant functions
   and functions with finite support in an ad-hoc way: we do not endow
   them with nominal set structures as defined above.
 
@@ -57,3 +57,21 @@ and a number of steps to run for, and returns the result of running
 that command on that state. This means that we prove our main results
 here by induction on the number of steps, as opposed to induction on
 a relation.
+
+** structured.v
+
+This file defines the instance of the language semantics based on the
+free name restriction construction. It also prove the main results of
+the paper for that semantics.
+
+** logic.v
+
+This file defines some basic heap-building functions, following the
+section on program verification, and proves some properties about
+them. It does not define triples, and it does not include the program
+verification examples.
+
+** cast.v
+
+This file proves a weaker integrity property for an unstructured
+version of the semantics that features a cast operator.
