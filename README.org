@@ -6,6 +6,8 @@ the the most important notions and results covered in each file.
 This has been tested with Coq version 8.4pl5 and uses the Ssreflect
 and MathComp libraries, both in version 1.5.
 
+To compile, just hit "make".
+
 * Files
 
 ** coq-utils
