@@ -1,3 +1,5 @@
+Require Import Coq.Unicode.Utf8.
+
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
 Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.choice.
 Require Import Ssreflect.seq.
@@ -17,6 +19,84 @@ Section Logic.
 
 Local Open Scope fset_scope.
 Local Open Scope state_scope.
+
+Inductive effect :=
+| No
+| Loop
+| Err
+| LoopErr.
+
+Definition effect_eq e e' :=
+  match e, e' with
+  | No, No | Loop, Loop | Err, Err | LoopErr, LoopErr => true
+  | _, _ => false
+  end.
+
+Lemma effect_eqP : Equality.axiom effect_eq.
+Proof. by case=> [] [] /=; constructor. Qed.
+
+Definition effect_eqMixin := EqMixin effect_eqP.
+Canonical effect_eqType := Eval hnf in EqType effect effect_eqMixin.
+
+Definition effect_leq e e' :=
+  match e, e' with
+  | No, _
+  | Loop, Loop
+  | Err, Err
+  | _, LoopErr => true
+  | _, _ => false
+  end.
+
+Notation "x ⊑ y" := (effect_leq x y) (at level 70, no associativity).
+
+Definition triple e s c s' :=
+  match e with
+  | No =>
+    exists n, eval_com bound_sem s c n = Done s'
+
+  | Loop =>
+    forall n, eval_com bound_sem s c n != NotYet ->
+              eval_com bound_sem s c n = Done s'
+
+  | Err =>
+    exists2 n, eval_com bound_sem s c n != NotYet &
+               eval_com bound_sem s c n != Error ->
+               eval_com bound_sem s c n = Done s'
+
+  | LoopErr =>
+    forall n s'', eval_com bound_sem s c n = Done s'' ->
+                  s'' = s'
+  end.
+
+Lemma triple_sub e e' s c s' :
+  e ⊑ e' ->
+  triple e s c s' ->
+  triple e' s c s'.
+Proof.
+case: e e'=> [] [] //= _.
+- case=> [n en] n'.
+  move: (eval_com_leq bound_sem s c (leq_maxr n n')).
+  move: (eval_com_leq bound_sem s c (leq_maxl n n')).
+  rewrite en /refine_result
+    => /orP [/eqP en' | /eqP en'] /orP [/eqP ->|/eqP en''] //.
+  by rewrite en'.
+- case=> [n en]; exists n; by [rewrite en|].
+- case=> [n en] n' s''.
+  move: (eval_com_leq bound_sem s c (leq_maxr n n')).
+  move: (eval_com_leq bound_sem s c (leq_maxl n n')).
+  rewrite en /refine_result
+    => /orP [/eqP en' | /eqP en'] /orP [/eqP ->|/eqP en''] //.
+  by rewrite en'' -en' => - [<-].
+- move=> P n s'' Pn.
+  by move: (P n); rewrite Pn=> /(_ erefl) [<-].
+case=> [n n_term Pn] n' s'' en.
+move: (eval_com_leq bound_sem s c (leq_maxr n n')) n_term Pn.
+move: (eval_com_leq bound_sem s c (leq_maxl n n')).
+rewrite en /refine_result
+  => /orP [/eqP en' | /eqP en'] /orP [/eqP en''|/eqP en''] //.
+  by rewrite en' => _ /(_ erefl).
+by rewrite en' -en'' => _ /(_ erefl) [<-].
+Qed.
 
 Definition lh i (vs : seq value) :=
   if vs is [::] then VNil else VPtr (i, 0)%R.
