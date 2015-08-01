@@ -98,6 +98,44 @@ rewrite en /refine_result
 by rewrite en' -en'' => _ /(_ erefl) [<-].
 Qed.
 
+Lemma triple_skip e s : triple e s Skip s.
+Proof.
+apply: (triple_sub (erefl : No ⊑ e)).
+by exists 1=> /=.
+Qed.
+
+Lemma triple_seq e s c1 s' c2 s'' :
+  triple e s c1 s' ->
+  triple e s' c2 s'' ->
+  triple e s (Seq c1 c2) s''.
+Proof.
+case: e=> /=.
+- move=> [n1 e1] [n2 e2].
+  exists (maxn n1 n2).+1=> /=.
+  move: (eval_com_leq bound_sem s c1 (leq_maxl n1 n2)).
+  rewrite e1 /refine_result /= => /eqP <-.
+  move: (eval_com_leq bound_sem s' c2 (leq_maxr n1 n2)).
+  by rewrite e2 /refine_result /= => /eqP <-.
+- move=> P1 P2 [|n] //=; move/(_ n): P1.
+  case e1: eval_com=> [s'''| |] //= /(_ erefl) //.
+  by move=> [->] {e1 s'''}; eauto.
+- case=> [n1 n1_term Pn1] [n2 n2_term Pn2].
+  move: (eval_com_leq bound_sem s' c2 (leq_maxr n1 n2)) n2_term Pn2.
+  move: (eval_com_leq bound_sem s c1 (leq_maxl n1 n2)) n1_term Pn1.
+  rewrite /refine_result; case: eval_com=> [s'''| |] //= /eqP/esym e1 _.
+    move=> /(_ erefl) [e].
+    rewrite {}e {s'''} in e1 *.
+    case: eval_com=> [s'''| |] //= /eqP/esym //= e2 _.
+      move=> /(_ erefl) [e].
+      rewrite {}e in e2 *.
+      by exists (maxn n1 n2).+1; rewrite /= e1 e2.
+    by move=> _; exists (maxn n1 n2).+1; rewrite /= e1 e2.
+  by exists (maxn n1 n2).+1; rewrite /= e1.
+move=> P1 P2 [|n] s''' //=.
+case e1: eval_com=> [s''''| |] //=.
+by move/(_ _ _ e1): P1=> -> {e1 s''''}; eauto.
+Qed.
+
 Definition lh i (vs : seq value) :=
   if vs is [::] then VNil else VPtr (i, 0)%R.
 
