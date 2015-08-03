@@ -55,17 +55,14 @@ Definition triple e s c s' :=
     exists n, eval_com bound_sem s c n = Done s'
 
   | Loop =>
-    forall n, eval_com bound_sem s c n != NotYet ->
-              eval_com bound_sem s c n = Done s'
+    forall n, eval_com bound_sem s c n \in [:: NotYet; Done s']
 
   | Err =>
-    exists2 n, eval_com bound_sem s c n != NotYet &
-               eval_com bound_sem s c n != Error ->
-               eval_com bound_sem s c n = Done s'
+    exists n, eval_com bound_sem s c n \in [:: Error; Done s']
 
   | LoopErr =>
-    forall n s'', eval_com bound_sem s c n = Done s'' ->
-                  s'' = s'
+    forall n, eval_com bound_sem s c n \in [:: NotYet; Error; Done s']
+
   end.
 
 Lemma triple_sub e e' s c s' :
@@ -79,23 +76,22 @@ case: e e'=> [] [] //= _.
   move: (eval_com_leq bound_sem s c (leq_maxl n n')).
   rewrite en /refine_result
     => /orP [/eqP en' | /eqP en'] /orP [/eqP ->|/eqP en''] //.
-  by rewrite en'.
-- case=> [n en]; exists n; by [rewrite en|].
-- case=> [n en] n' s''.
+  by rewrite en' !inE en'' eqxx orbT.
+- case=> [n en]; exists n; by rewrite en !inE eqxx orbT.
+- case=> [n en] n'.
   move: (eval_com_leq bound_sem s c (leq_maxr n n')).
   move: (eval_com_leq bound_sem s c (leq_maxl n n')).
   rewrite en /refine_result
     => /orP [/eqP en' | /eqP en'] /orP [/eqP ->|/eqP en''] //.
-  by rewrite en'' -en' => - [<-].
-- move=> P n s'' Pn.
-  by move: (P n); rewrite Pn=> /(_ erefl) [<-].
-case=> [n n_term Pn] n' s'' en.
-move: (eval_com_leq bound_sem s c (leq_maxr n n')) n_term Pn.
-move: (eval_com_leq bound_sem s c (leq_maxl n n')).
-rewrite en /refine_result
-  => /orP [/eqP en' | /eqP en'] /orP [/eqP en''|/eqP en''] //.
-  by rewrite en' => _ /(_ erefl).
-by rewrite en' -en'' => _ /(_ erefl) [<-].
+  by rewrite en'' -en' !inE eqxx orbT.
+- move=> P n; move/(_ n): P; rewrite !inE orbA [_ || _ as X in X || _]orbC.
+  by rewrite -orbA=> ->; rewrite orbT.
+case=> [n n_term] n'.
+move: (eval_com_leq bound_sem s c (leq_maxr n n')).
+move: n_term (eval_com_leq bound_sem s c (leq_maxl n n')).
+by rewrite 2!inE=> /orP [/eqP en|/eqP en];
+rewrite en /refine_result /= => /eqP <- /orP [/eqP ->| /eqP ->];
+rewrite !inE /=.
 Qed.
 
 Lemma triple_skip e s : triple e s Skip s.
@@ -117,23 +113,42 @@ case: e=> /=.
   move: (eval_com_leq bound_sem s' c2 (leq_maxr n1 n2)).
   by rewrite e2 /refine_result /= => /eqP <-.
 - move=> P1 P2 [|n] //=; move/(_ n): P1.
-  case e1: eval_com=> [s'''| |] //= /(_ erefl) //.
-  by move=> [->] {e1 s'''}; eauto.
-- case=> [n1 n1_term Pn1] [n2 n2_term Pn2].
-  move: (eval_com_leq bound_sem s' c2 (leq_maxr n1 n2)) n2_term Pn2.
-  move: (eval_com_leq bound_sem s c1 (leq_maxl n1 n2)) n1_term Pn1.
-  rewrite /refine_result; case: eval_com=> [s'''| |] //= /eqP/esym e1 _.
-    move=> /(_ erefl) [e].
-    rewrite {}e {s'''} in e1 *.
-    case: eval_com=> [s'''| |] //= /eqP/esym //= e2 _.
-      move=> /(_ erefl) [e].
-      rewrite {}e in e2 *.
-      by exists (maxn n1 n2).+1; rewrite /= e1 e2.
-    by move=> _; exists (maxn n1 n2).+1; rewrite /= e1 e2.
-  by exists (maxn n1 n2).+1; rewrite /= e1.
-move=> P1 P2 [|n] s''' //=.
-case e1: eval_com=> [s''''| |] //=.
-by move/(_ _ _ e1): P1=> -> {e1 s''''}; eauto.
+  by rewrite 2!inE=> /orP [] /eqP ->.
+- case=> [n1 n1_term] [n2 n2_term] /=; exists (maxn n1 n2).+1; rewrite /=.
+  move: n2_term (eval_com_leq bound_sem s' c2 (leq_maxr n1 n2)).
+  move: n1_term (eval_com_leq bound_sem s c1 (leq_maxl n1 n2)).
+  rewrite /refine_result !inE /= => /orP [] /eqP -> /= /eqP <- //=.
+  by case/orP=> [] /eqP -> /= /eqP <- /=.
+move=> P1 P2 [|n] //=.
+move/(_ n): P1; rewrite !inE => /or3P [] /eqP -> //=.
+by move/(_ n): P2; rewrite !inE.
+Qed.
+
+Lemma triple_frame e s1 c s1' s2 :
+  fsubset (vars_c c) (vars_s s1) ->
+  (if e \in [:: No; Loop] then
+     fdisjoint (pub s1) (pub s2)
+   else
+     fdisjoint (names s1) (pub s2)) ->
+  triple e s1 c s1' ->
+  triple e (s1 * s2) c (s1' * s2).
+Proof.
+case: e=> [] //= sub dis.
+- case=> [n ev]; exists n; exact: frame_ok.
+- move=> P n; move/(_ n): P; rewrite !inE => /orP [] /eqP ev.
+    by rewrite (frame_loop sub dis ev).
+  by rewrite (frame_ok sub dis ev) /=.
+- case=> [n]; rewrite !inE => /orP [] /eqP ev; exists n.
+    by rewrite (frame_error sub dis ev).
+  have{dis} dis: fdisjoint (pub s1) (pub s2).
+    by apply: (fdisjoint_trans (pub_names s1)).
+  by rewrite (frame_ok sub dis ev) !inE /=.
+have dis': fdisjoint (pub s1) (pub s2).
+  by apply: (fdisjoint_trans (pub_names s1)).
+move=> ev n; move/(_ n): ev; rewrite !inE => /or3P [] /eqP ev.
+- by rewrite (frame_loop sub dis' ev).
+- by rewrite (frame_error sub dis ev).
+by rewrite (frame_ok sub dis' ev) /=.
 Qed.
 
 Definition lh i (vs : seq value) :=
