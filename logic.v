@@ -151,6 +151,42 @@ move=> ev n; move/(_ n): ev; rewrite !inE => /or3P [] /eqP ev.
 by rewrite (frame_ok sub dis' ev) /=.
 Qed.
 
+Lemma triple_restriction e A s c s' :
+  finsupp A s -> finsupp A s' ->
+  (forall n, n \notin A -> triple e (s n) c (s' n)) ->
+  triple e (new A s) c (new A s').
+Proof.
+move=> fs fs'; move: (fresh _) (freshP A) => n Pn.
+have R: forall n' (s : name -> state),
+          n' \notin A -> finsupp A s ->
+          s n' = rename (fperm2 n n') (s n).
+  move=> {s s' fs fs'} n' s Pn' /(_ (fperm2 n n')) ->.
+    by rewrite renamenE fperm2L.
+  apply: (fdisjoint_trans (fsubset_supp_fperm2 _ _)).
+  by apply/fdisjointP=> n'' /fset2P [] ->.
+case: e=> [] /= /(_ _ Pn).
+- case=> [k ev]; exists k.
+  apply: restriction_ok => // n' Pn'.
+  by rewrite R // [in RHS]R // -renaming ev.
+- move=> ev k; move/(_ k): ev; rewrite !inE => /orP [] /eqP ev; apply/orP.
+    left; apply/eqP/restriction_loop=> // n' Pn'.
+    by rewrite R // -renaming ev.
+  right; apply/eqP/restriction_ok=> // n' Pn'.
+  by rewrite R // [in RHS]R // -renaming ev.
+- case=> [k ev]; exists k; move: ev; rewrite !inE=> /orP [] /eqP ev; apply/orP.
+    left; apply/eqP/restriction_error=> // n' Pn'.
+    by rewrite R // -renaming ev.
+  right; apply/eqP/restriction_ok=> // n' Pn'.
+  by rewrite R // [in RHS]R // -renaming ev.
+move=> ev k; move/(_ k): ev; rewrite !inE=> /or3P [] /eqP ev; apply/or3P.
+- apply/Or31/eqP/restriction_loop=> // n' Pn'.
+  by rewrite R // -renaming ev.
+- apply/Or32/eqP/restriction_error=> // n' Pn'.
+  by rewrite R // -renaming ev.
+apply/Or33/eqP/restriction_ok=> // n' Pn'.
+by rewrite R // [in RHS]R // -renaming ev.
+Qed.
+
 Definition lh i (vs : seq value) :=
   if vs is [::] then VNil else VPtr (i, 0)%R.
 
