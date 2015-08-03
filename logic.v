@@ -65,6 +65,53 @@ Definition triple e s c s' :=
 
   end.
 
+Lemma elim_triple_strong e s1 c1 s1' s2 c2 s2' :
+  (forall n,  eval_com bound_sem s1 c1 n = NotYet ->
+   exists2 n', n <= n' & eval_com bound_sem s2 c2 n' = NotYet) ->
+  (forall n, Err ⊑ e -> eval_com bound_sem s1 c1 n = Error ->
+   exists n', eval_com bound_sem s2 c2 n' = Error) ->
+  (forall n,  eval_com bound_sem s1 c1 n = Done s1' ->
+   exists n', eval_com bound_sem s2 c2 n' = Done s2') ->
+  triple e s1 c1 s1' -> triple e s2 c2 s2'.
+Proof.
+case: e=> [] /= ev_loop ev_error ev_ok.
+- by case=> [n ev]; eauto.
+- move=> ev n; move/(_ n): ev; rewrite !inE.
+  case/orP=> [] /eqP ev.
+    case/(_ _ ev): ev_loop=> [n' lnn' {ev} ev]; apply/orP; left.
+    by rewrite (eval_com_loop lnn' ev).
+  case/(_ _ ev): ev_ok=> [n' {ev} ev].
+  exact: (eval_com_ok n ev).
+- case=> [n]; rewrite !inE => /orP [] /eqP ev.
+    case/(_ _ erefl ev): ev_error=> [n' {ev} ev].
+    by exists n'; rewrite ev inE eqxx.
+  case/(_ _ ev): ev_ok=> [n' {ev} ev].
+  by exists n'; rewrite ev !inE eqxx orbT.
+move=> ev n; move/(_ n): ev; rewrite !inE => /or3P [] /eqP ev.
+- move/(_ _ ev): ev_loop => [n' lnn' {ev} ev].
+  by rewrite (eval_com_loop lnn' ev).
+- move/(_ _ erefl ev): ev_error=> [n' {ev} ev].
+  move: (eval_com_error n ev); rewrite /refine_result.
+  by case/orP=> -> //; rewrite orbT.
+move/(_ _ ev): ev_ok=> [n' {ev} ev].
+move: (eval_com_ok n ev); rewrite /refine_result.
+by case/orP=> -> //; rewrite !orbT.
+Qed.
+
+Lemma elim_triple e s1 c1 s1' s2 c2 s2' :
+  (forall n, eval_com bound_sem s1 c1 n = NotYet ->
+             eval_com bound_sem s2 c2 n = NotYet) ->
+  (forall n, Err ⊑ e ->
+             eval_com bound_sem s1 c1 n = Error ->
+             eval_com bound_sem s2 c2 n = Error) ->
+  (forall n, eval_com bound_sem s1 c1 n = Done s1' ->
+             eval_com bound_sem s2 c2 n = Done s2') ->
+  triple e s1 c1 s1' -> triple e s2 c2 s2'.
+Proof.
+move=> ev_loop ev_error ev_ok.
+by apply: elim_triple_strong=> [n ev|n err ev|n ev]; exists n=> //; eauto.
+Qed.
+
 Lemma triple_sub e e' s c s' :
   e ⊑ e' ->
   triple e s c s' ->
@@ -126,29 +173,19 @@ Qed.
 
 Lemma triple_frame e s1 c s1' s2 :
   fsubset (vars_c c) (vars_s s1) ->
-  (if e \in [:: No; Loop] then
-     fdisjoint (pub s1) (pub s2)
-   else
-     fdisjoint (names s1) (pub s2)) ->
+  (if Err ⊑ e then fdisjoint (names s1) (pub s2)
+   else fdisjoint (pub s1) (pub s2)) ->
   triple e s1 c s1' ->
   triple e (s1 * s2) c (s1' * s2).
 Proof.
-case: e=> [] //= sub dis.
-- case=> [n ev]; exists n; exact: frame_ok.
-- move=> P n; move/(_ n): P; rewrite !inE => /orP [] /eqP ev.
-    by rewrite (frame_loop sub dis ev).
-  by rewrite (frame_ok sub dis ev) /=.
-- case=> [n]; rewrite !inE => /orP [] /eqP ev; exists n.
-    by rewrite (frame_error sub dis ev).
-  have{dis} dis: fdisjoint (pub s1) (pub s2).
-    by apply: (fdisjoint_trans (pub_names s1)).
-  by rewrite (frame_ok sub dis ev) !inE /=.
+move=> sub dis.
 have dis': fdisjoint (pub s1) (pub s2).
+  case: ifP dis=> // _ dis.
   by apply: (fdisjoint_trans (pub_names s1)).
-move=> ev n; move/(_ n): ev; rewrite !inE => /or3P [] /eqP ev.
+apply: elim_triple=> [n ev|n err ev|n ev].
 - by rewrite (frame_loop sub dis' ev).
-- by rewrite (frame_error sub dis ev).
-by rewrite (frame_ok sub dis' ev) /=.
+- by rewrite err in dis; rewrite (frame_error sub dis ev).
+by rewrite (frame_ok sub dis' ev).
 Qed.
 
 Lemma triple_restriction e A s c s' :
@@ -164,27 +201,47 @@ have R: forall n' (s : name -> state),
     by rewrite renamenE fperm2L.
   apply: (fdisjoint_trans (fsubset_supp_fperm2 _ _)).
   by apply/fdisjointP=> n'' /fset2P [] ->.
-case: e=> [] /= /(_ _ Pn).
-- case=> [k ev]; exists k.
-  apply: restriction_ok => // n' Pn'.
-  by rewrite R // [in RHS]R // -renaming ev.
-- move=> ev k; move/(_ k): ev; rewrite !inE => /orP [] /eqP ev; apply/orP.
-    left; apply/eqP/restriction_loop=> // n' Pn'.
-    by rewrite R // -renaming ev.
-  right; apply/eqP/restriction_ok=> // n' Pn'.
-  by rewrite R // [in RHS]R // -renaming ev.
-- case=> [k ev]; exists k; move: ev; rewrite !inE=> /orP [] /eqP ev; apply/orP.
-    left; apply/eqP/restriction_error=> // n' Pn'.
-    by rewrite R // -renaming ev.
-  right; apply/eqP/restriction_ok=> // n' Pn'.
-  by rewrite R // [in RHS]R // -renaming ev.
-move=> ev k; move/(_ k): ev; rewrite !inE=> /or3P [] /eqP ev; apply/or3P.
-- apply/Or31/eqP/restriction_loop=> // n' Pn'.
+move=> /(_ _ Pn); apply: elim_triple=> [k ev|k _ ev|k ev].
+- apply/restriction_loop=> // n' Pn'.
   by rewrite R // -renaming ev.
-- apply/Or32/eqP/restriction_error=> // n' Pn'.
+- apply/restriction_error=> // n' Pn'.
   by rewrite R // -renaming ev.
-apply/Or33/eqP/restriction_ok=> // n' Pn'.
+apply/restriction_ok=> // n' Pn'.
 by rewrite R // [in RHS]R // -renaming ev.
+Qed.
+
+Definition eval_exprb e (s : state) : option value :=
+  oexpose (mapb (fun s => eval_expr true s.1 e) s).
+
+Lemma eval_exprbE e A ls h :
+  eval_exprb e (mask A (ls, h))
+  = (if fsubset (names (eval_expr true ls e)) A then
+       Some (eval_expr true ls e)
+     else None).
+Proof.
+rewrite /eval_exprb mapbE /=; last first.
+  by move=> {ls h} s [ls h] /=; rewrite rename_eval_expr.
+by rewrite oexposeE.
+Qed.
+
+Lemma triple_if e s ex ct ce s' :
+  match eval_exprb ex s with
+  | Some (VBool true)  => triple e s ct s'
+  | Some (VBool false) => triple e s ce s'
+  | _ => False
+  end ->
+  triple e s (If ex ct ce) s'.
+Proof.
+(*case ev: eval_exprb=> [[[]| | |]|] //.
+  apply: elim_triple=> [k|k _|k].
+  -
+
+case: s / boundP => [/= A [ls h] sub].
+rewrite eval_exprbE.
+case: ifP=> //.
+case ev: eval_expr=> [b| | |] // _.
+*)
+admit.
 Qed.
 
 Definition lh i (vs : seq value) :=

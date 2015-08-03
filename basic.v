@@ -301,14 +301,20 @@ Fixpoint eval_com T (S : sem T) s c k :=
     end
   else NotYet.
 
+Section Consistency.
+
+Variable T : eqType.
+
 (** The semantics defined as a function is consistent, in the sense
 that increasing the maximum number of steps it can run for can only
 cause it to produce a better result. *)
 
-Definition refine_result (T : eqType) (r1 r2 : result T) :=
+Definition refine_result (r1 r2 : result T) :=
   (r1 == NotYet) || (r1 == r2).
 
-Lemma eval_com_leq (T : eqType) (S : sem T) s c k k' :
+Variable S : sem T.
+
+Lemma eval_com_leq s c k k' :
   k <= k' ->
   refine_result (eval_com S s c k) (eval_com S s c k').
 Proof.
@@ -321,6 +327,37 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e ct ce|e c] /=; try by rewrite eqxx ?orbT.
 - by case: (eval_cond S e s) => [b|] //=; eauto.
 by case: (eval_cond S e s) => [b|] //=; eauto.
 Qed.
+
+Lemma eval_com_loop s c k k' :
+  k <= k' ->
+  eval_com S s c k' = NotYet ->
+  eval_com S s c k  = NotYet.
+Proof.
+move=> lkk' ev; move: (eval_com_leq s c lkk').
+by rewrite ev /refine_result orbb=> /eqP.
+Qed.
+
+Lemma eval_com_error s c k k' :
+  eval_com S s c k' = Error ->
+  refine_result (eval_com S s c k) Error.
+Proof.
+move=> ev.
+move: (eval_com_leq s c (leq_maxl k k')).
+move: (eval_com_leq s c (leq_maxr k k')).
+by rewrite ev /refine_result /= => /eqP <-.
+Qed.
+
+Lemma eval_com_ok s c s' k k' :
+  eval_com S s c k' = Done s' ->
+  refine_result (eval_com S s c k) (Done s').
+Proof.
+move=> ev.
+move: (eval_com_leq s c (leq_maxl k k')).
+move: (eval_com_leq s c (leq_maxr k k')).
+by rewrite ev /refine_result /= => /eqP <-.
+Qed.
+
+End Consistency.
 
 (** Basic, unstructured semantics for our language. *)
 
