@@ -287,6 +287,27 @@ move=> sub1 sub2; rewrite /setl -lock /= mapb_fsE //.
 by apply: fsubIset; rewrite sub1.
 Qed.
 
+Lemma setlx x v v' : setl (x ::= v) x v' = (x ::= v').
+Proof.
+have P:
+  forall v'' : value, names (setm emptym x v'', emptym : heap) = names v''.
+  move=> v''; rewrite {1}/names /= /prod_names /= namesm_empty fsetU0.
+  apply/eq_fset=> n; apply/idP/idP.
+    case/namesmP; first by move=> ???; rewrite namesT in_fset0.
+    move=> x' v'''; rewrite setmE emptymE.
+    by case: eqP=> // _ [<-].
+  move=> n_in_v'; apply/fsetUP; right; apply/namesfsP; exists v''=> //.
+  by apply/codommP; exists x; rewrite setmE eqxx.
+rewrite /setl /locval -!lock /= mapb_fsE /=.
+- rewrite [X in (X, _)](_ : _ = setm emptym x v'); last first.
+    by apply/eq_partmap=> x'; rewrite !setmE; case: eqP.
+  rewrite maskE P; congr mask; apply/eqP; rewrite eqEfsubset fsubsetIr /=.
+  by rewrite fsubsetI fsubsetxx andbT; apply: fsubsetU; rewrite fsubsetxx.
+- move=> pm dis [/= ls h].
+  by rewrite renamepE /= renamem_set [_ _ v']names_disjointE.
+by rewrite P fsubIset // fsubsetxx orbT.
+Qed.
+
 Lemma triple_assn s x e v :
   eval_exprb e s = Some v ->
   triple No s (Assn x e) (setl s x v).
