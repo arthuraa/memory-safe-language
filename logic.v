@@ -226,22 +226,48 @@ Qed.
 
 Lemma triple_if e s ex ct ce s' :
   match eval_exprb ex s with
-  | Some (VBool true)  => triple e s ct s'
-  | Some (VBool false) => triple e s ce s'
+  | Some (VBool b) => triple e s (if b then ct else ce) s'
   | _ => False
   end ->
   triple e s (If ex ct ce) s'.
 Proof.
-(*case ev: eval_exprb=> [[[]| | |]|] //.
-  apply: elim_triple=> [k|k _|k].
-  -
+case ev_ex: eval_exprb=> [[b| | |]|] //.
+apply: elim_triple_strong=> [k ev|k _ ev|k ev].
+- exists k.+1=> /=; first exact: leqnSn.
+  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
+  rewrite eval_exprbE bound_eval_condE /= => ev.
+  by case: ifP=> _ // [->].
+- exists k.+1=> /=.
+  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
+  rewrite eval_exprbE bound_eval_condE /= => ev.
+  by case: ifP=> _ // [->].
+exists k.+1=> /=.
+case: s / boundP ev ev_ex=> [/= A [ls h] sub].
+rewrite eval_exprbE bound_eval_condE /= => ev.
+by case: ifP=> _ // [->].
+Qed.
 
-case: s / boundP => [/= A [ls h] sub].
-rewrite eval_exprbE.
-case: ifP=> //.
-case ev: eval_expr=> [b| | |] // _.
-*)
-admit.
+Lemma triple_while e s ex c s' :
+  match eval_exprb ex s with
+  | Some (VBool b) => triple e s (if b then Seq c (While ex c) else Skip) s'
+  | _ => False
+  end ->
+  triple e s (While ex c) s'.
+Proof.
+case ev_ex: eval_exprb=> [[b| | |]|] //.
+apply: elim_triple_strong=> [k ev|k _ ev|k ev].
+- exists k.+1=> /=; first exact: leqnSn.
+  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
+  rewrite eval_exprbE bound_eval_condE /= => ev.
+  by case: ifP=> _ // [->].
+- exists k.+1=> /=.
+  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
+  rewrite eval_exprbE bound_eval_condE /= => ev.
+  by case: ifP=> _ // [->].
+exists k.+1=> /=.
+case: s / boundP ev ev_ex=> [/= A [ls h] sub].
+rewrite eval_exprbE bound_eval_condE /= => ev.
+by case: ifP=> _ // [->].
 Qed.
 
 Definition lh i (vs : seq value) :=
