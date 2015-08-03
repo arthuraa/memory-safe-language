@@ -270,6 +270,68 @@ rewrite eval_exprbE bound_eval_condE /= => ev.
 by case: ifP=> _ // [->].
 Qed.
 
+Definition setl (s : state) x v :=
+  locked mapb_fs _ _ (names v) (fun s => (setm s.1 x v, s.2)) s.
+
+Lemma setlE A s x v :
+  fsubset (names v) A ->
+  fsubset A (names s) ->
+  setl (mask A s) x v = mask A (setm s.1 x v, s.2).
+Proof.
+move=> sub1 sub2; rewrite /setl -lock /= mapb_fsE //.
+- by congr mask; apply/eqP.
+- move=> pm /= dis [ls h] /=.
+  rewrite renamepE /=; congr pair.
+  rewrite renamem_set; congr setm.
+  by rewrite names_disjointE.
+by apply: fsubIset; rewrite sub1.
+Qed.
+
+Lemma triple_assn s x e v :
+  eval_exprb e s = Some v ->
+  triple No s (Assn x e) (setl s x v).
+Proof.
+move=> /= ev; exists 1=> /=; congr Done.
+case: s / boundP ev => [/= A [ls h] sub].
+rewrite eval_exprbE; case: ifP=> // sub' [ev].
+move: sub'; rewrite bound_assnE /= ev => sub'.
+by rewrite setlE //.
+Qed.
+
+Definition loadb (s : state) (ptr : name * int) :=
+  odflt None (oexpose (locked mapb_fs _ _ (names ptr)
+                              (fun s : locals * heap => s.2 ptr) s)).
+
+Lemma loadbE A s ptr :
+  fsubset (names ptr) A ->
+  fsubset A (names s) ->
+  loadb (mask A s) ptr =
+  if fsubset (names (s.2 ptr)) A then
+    s.2 ptr
+  else None.
+Proof.
+move=> sub1 sub2; rewrite /loadb -lock mapb_fsE.
+- move: (sub1); rewrite {1}/fsubset; move/eqP=> ->.
+  by rewrite oexposeE; case: ifP.
+- move=> pm /= dis [ls h] /=.
+  by rewrite renamemE [rename _ ptr]names_disjointE // supp_inv.
+by apply: fsubIset; rewrite sub1.
+Qed.
+
+Lemma triple_load s x e ptr v :
+  eval_exprb e s = Some (VPtr ptr) ->
+  loadb s ptr = Some v ->
+  triple No s (Load x e) (setl s x v).
+Proof.
+move=> /= ev_ex get; exists 1=> /=.
+case: s / boundP ev_ex get => [/= A [ls h] sub].
+rewrite eval_exprbE; case: ifP=> // sub' [ev].
+rewrite ev in sub'; rewrite loadbE //=.
+rewrite bound_loadE /= ev.
+case: ifP=> // sub'' get; rewrite get /=; congr Done.
+by rewrite get in sub''; rewrite setlE.
+Qed.
+
 Definition lh i (vs : seq value) :=
   if vs is [::] then VNil else VPtr (i, 0)%R.
 
