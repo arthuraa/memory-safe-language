@@ -396,6 +396,31 @@ Definition storeb (s : state) (ptr : name * int) v :=
   obound (locked mapb_fs _ _ (names ptr :|: names v)
                  (fun s => omap (fun h => (s.1, h)) (updm s.2 ptr v)) s).
 
+Lemma storebE A s ptr v :
+  fsubset (names ptr) A ->
+  fsubset (names v) A ->
+  fsubset A (names s) ->
+  storeb (mask A s) ptr v =
+  omap (fun h => mask A (s.1, h)) (updm s.2 ptr v).
+Proof.
+move: s ptr v => [/= ls h] ptr v sub1 sub2 sub3.
+have sub4: fsubset (names ptr :|: names v) A by rewrite fsubUset sub1.
+rewrite /storeb -!lock /= mapb_fsE /= ?oboundE.
+- by move: sub4; rewrite {1}/fsubset => /eqP ->; case: updm.
+- move=> pm /= dis {ls h sub3} [ls' h'] /=.
+  have dis1: fdisjoint (supp pm) (names ptr).
+    rewrite fdisjointC in dis; rewrite fdisjointC.
+    by apply: (fdisjoint_trans (fsubsetUl _ (names v))).
+  have dis2: fdisjoint (supp pm) (names v).
+    rewrite fdisjointC in dis; rewrite fdisjointC.
+    by apply: (fdisjoint_trans (fsubsetUr (names ptr) _)).
+  rewrite /updm renamemE [rename _ ptr]names_disjointE ?supp_inv //.
+  case get: (h' ptr)=> [v'|] //=.
+  rewrite {1}/rename /= renamepE /= renamem_set.
+  by rewrite [rename _ ptr]names_disjointE // [rename _ v]names_disjointE.
+by apply/fsubIset; rewrite sub4.
+Qed.
+
 Definition lh i (vs : seq value) :=
   if vs is [::] then VNil else VPtr (i, 0)%R.
 
