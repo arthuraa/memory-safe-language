@@ -339,6 +339,45 @@ move=> sub1 sub2; rewrite /loadb -lock mapb_fsE.
 by apply: fsubIset; rewrite sub1.
 Qed.
 
+Lemma loadbp i i' vs n :
+  loadb (i :-> vs) (i', n) =
+  if i' == i then
+    if n is Posz n then nth None [seq Some v | v <- vs] n
+    else None
+  else None.
+Proof.
+rewrite /loadb /blockat -!lock /= {1}/names /= /prod_names /= namesT fsetU0.
+rewrite namesnE mapb_fsE /=.
+- rewrite oexposeE mkpartmapfE.
+  case: eqP=> [->{i'}|ne].
+    rewrite fsetU1E fsetUA fsetUid -fsetU1E.
+    case: n=> [n|n] /=.
+      rewrite mem_map=> [|?? [<-]] //; rewrite mem_iota add0n leq0n /=.
+      case: (ifP (n < size vs)) => [lvs|gvs].
+        rewrite {1}/names /= ifT /= ?(nth_map VNil None _ lvs) //.
+        apply/fsubsetP=> i' Pi'; apply/fsetU1P; right.
+        apply/namessP; exists (nth VNil vs n)=> //.
+        by apply/(nthP VNil); eauto.
+      rewrite {1}/names /= fsub0set /= nth_default //.
+      by rewrite size_map leqNgt gvs.
+    rewrite (@ifF _ (_ \in _)); first by rewrite /names /= fsub0set.
+    by apply/negbTE/mapP=> - [? ?].
+  rewrite (@ifF _ (_ \in _)); first by rewrite /names /= fsub0set.
+  apply/negbTE/mapP=> - [? ?]; congruence.
+- move=> pm dis /= [ls h] /=.
+  rewrite renamemE [rename _ (_, _)]names_disjointE //.
+  by rewrite supp_inv /names /= /prod_names /= namesT fsetU0.
+apply/fsubsetP=> i'' /fsetIP [/fset1P -> {i''}].
+case/fsetUP=> [] /=; first by rewrite namesm_empty.
+rewrite namesm_mkpartmapf=> /fsetUP [] /namessP.
+  case=> [p /mapP [? ? ->] /fsetUP []] /=; last by rewrite namesT.
+  by move=> /namesnP ->; apply/fsetU1P; auto.
+case=> [v /mapP [p /mapP [n']]].
+rewrite mem_iota leq0n /= add0n => Pn' -> {p} /= -> Pi'.
+apply/fsetU1P; right; apply/namessP; exists (nth VNil vs n')=> //.
+by apply/(nthP VNil); eauto.
+Qed.
+
 Lemma triple_load s x e ptr v :
   eval_exprb e s = Some (VPtr ptr) ->
   loadb s ptr = Some v ->
@@ -352,6 +391,10 @@ rewrite bound_loadE /= ev.
 case: ifP=> // sub'' get; rewrite get /=; congr Done.
 by rewrite get in sub''; rewrite setlE.
 Qed.
+
+Definition storeb (s : state) (ptr : name * int) v :=
+  obound (locked mapb_fs _ _ (names ptr :|: names v)
+                 (fun s => omap (fun h => (s.1, h)) (updm s.2 ptr v)) s).
 
 Definition lh i (vs : seq value) :=
   if vs is [::] then VNil else VPtr (i, 0)%R.
@@ -368,7 +411,6 @@ Proof. by case: vs. Qed.
 
 Lemma names_lh i vs : names (lh i vs) = if nilp vs then fset0 else fset1 i.
 Proof. by case: vs=> //= _ _; rewrite namesvE. Qed.
-
 
 Lemma vars_lb i vs : vars_s (lb i vs) = fset0.
 Proof.
