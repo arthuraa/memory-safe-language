@@ -442,7 +442,7 @@ Definition lh i (vs : seq value) :=
 Fixpoint lb i vs :=
   if vs is v :: vs' then
     new (i |: names vs)
-        (fun i' => i :-> [:: v; lh i' vs] * lb i' vs')
+        (fun i' => i :-> [:: v; lh i' vs'] * lb i' vs')
   else emp.
 
 Lemma rename_lh pm i vs :
@@ -489,17 +489,16 @@ rewrite names_hide names_stateu; first last.
   rewrite pub_blockat pub_lb; case: (vs)=> // _ _.
     by apply/fdisjointP=> i'' /fset1P ->; rewrite in_fset1 eq_sym.
   by rewrite !vars_s_blockat fdisjoint0.
-rewrite pub_hide pubU pub_blockat names_blockat /= namessE /=.
-rewrite fsetU0 !fsetUA /= namesT fsetU0 fsetU1E namesnE {}IH.
-rewrite !fsetD1U -!fsetUA; congr fsetU.
-rewrite fsetUA fsetUC -!fsetUA; congr fsetU.
-rewrite [fset1 _ :\ _]fsetD1E fsetDv fsetU0 fsetUC; congr fsetU.
-  apply/eqP; rewrite eqEfsubset fsubD1set fsetU1E fsubsetUr /=.
-  apply/fsubsetP=> i'' inv; rewrite in_fsetD1 inv andbT.
-  by apply: contra ninv=> /eqP <-.
+rewrite pub_hide pubU pub_blockat names_blockat /= namessE /= fsetU0 {}IH.
+rewrite fsetU1E !fsetD1U -!fsetUA; congr fsetU.
+have ->: names (lh i' vs) :\ i' = fset0.
+  by rewrite names_lh; case: (vs)=> //= ??; rewrite fsetD1E fsetDv.
+have ->: pub (lb i' vs) :\ i' = fset0.
+  by rewrite pub_lb; case: (vs)=> //= ??; rewrite fsetD1E fsetDv.
+rewrite !fset0U -fsetD1U.
 apply/eqP; rewrite eqEfsubset fsubD1set fsetU1E fsubsetUr /=.
 apply/fsubsetP=> i'' inv; rewrite in_fsetD1 inv andbT.
-by apply: contra ninvs=> /eqP <-.
+by apply: contraTN inv => /eqP ->; rewrite in_fsetU negb_or ninv.
 Qed.
 
 Lemma rename_lb pm i vs :
@@ -513,15 +512,71 @@ rewrite rename_new; last first.
   move: dis; rewrite fsetU1E namess1 2!fdisjointUr fdisjoints1.
   case/and3P=> [/suppPn pm_i disv disvs].
   rewrite pm_i renamesE /= names_disjointE //.
-  by rewrite renamevE renamepE /= (names_disjointE disvs).
+  by rewrite rename_lh /= (names_disjointE disvs).
 rewrite (_ : pm i |: _ = pm @: (i |: names (v :: vs))); last first.
   by rewrite imfsetU1 -names_rename renamesE.
 set A := pm @: (i |: _).
-move: (fresh _) (freshP A)=> n ninA /=.
 rewrite /new -!lock /=.
+move: (fresh _) (freshP A)=> n ninA /=.
 rewrite rename_stateu rename_blockat renamesE /=.
-rewrite [rename pm (VPtr _)]renamevE renamepE /= renameT.
-by rewrite renameKV IH // renamenE fpermKV.
+by rewrite !rename_lh renamenE IH // fpermKV.
+Qed.
+
+Definition ll x vs : state :=
+  new (names vs) (fun i => (x ::= lh i vs) * lb i vs).
+
+Lemma ll0 x : ll x [::] = x ::= VNil.
+Proof.
+rewrite /ll /= -[RHS]stateus0 -[RHS]new_const namess0; congr new.
+by rewrite stateus0 names_locval.
+Qed.
+
+Lemma ll1 x v vs :
+  ll x (v :: vs) =
+  new (names v :|: names vs)
+      (fun i => new (i |: names v :|: names vs)
+                    (fun i' =>
+                       x ::= VPtr (i, Posz 0) *
+                       i :-> [:: v; lh i' vs] *
+                       lb i' vs)).
+Proof.
+rewrite /ll namess1; apply/newP=> i Pn /=; rewrite namess1 new_stateur.
+  rewrite names_locval namesvE /= !fsetU1E !fsetUA fsetUid.
+  by apply/newP=> ??; rewrite stateuA.
+move=> pm.
+rewrite fsetU1E !fdisjointUr fdisjoints1 => /and3P [Pi Pv Pvs] i'.
+rewrite !rename_stateu rename_lb rename_blockat /=.
+rewrite {1}/rename /= names_disjointE // rename_lh names_disjointE //.
+by rewrite -renamenE names_disjointE // namesnE fdisjoints1.
+Qed.
+
+Local Open Scope string_scope.
+
+Local Notation "c1 ;; c2" :=
+  (Seq c1 c2) (at level 70, right associativity).
+
+Definition listrev :=
+  While (Neg (Binop Eq (Var "x") ENil))
+        (Load "y" (Binop Add (Var "x") (Num 1));;
+         Store (Binop Add (Var "x") (Num 1)) (Var "r");;
+         Assn "r" (Var "x");;
+         Assn "x" (Var "y");;
+         Assn "y" ENil).
+
+Lemma listrev_spec vs :
+  triple No
+         (ll "x" vs * "r" ::= VNil * "y" ::= VNil)
+         listrev
+         ("x" ::= VNil * ll "r" (rev vs) * "y" ::= VNil).
+Proof.
+(*rewrite -(ll0 "r") -[rev vs]cats0.
+elim: vs [::] => [|v vs IH] vs'.
+  rewrite /rev /= !ll0 /listrev; apply: triple_while.
+  admit.
+rewrite rev_cons cat_rcons {1}/ll /=. -stateuA new_stateul; last first.
+  move=> pm dis /= i; rewrite !rename_stateu rename_locval; congr stateu.
+*)
+admit.
 Qed.
 
 End Logic.
