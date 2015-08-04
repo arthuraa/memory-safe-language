@@ -421,6 +421,21 @@ rewrite /storeb -!lock /= mapb_fsE /= ?oboundE.
 by apply/fsubIset; rewrite sub4.
 Qed.
 
+Lemma triple_store s e e' ptr v s' :
+  eval_exprb e s = Some (VPtr ptr) ->
+  eval_exprb e' s = Some v ->
+  storeb s ptr v = Some s' ->
+  triple No s (Store e e') s'.
+Proof.
+case: s / boundP=> [/= A [ls h] sub] ev_e ev_e' st.
+exists 1=> /=; rewrite bound_storeE /=.
+move: ev_e ev_e' st.
+rewrite eval_exprbE; case: ifP=> // sub' [e_ptr]; rewrite e_ptr in sub' *.
+rewrite eval_exprbE; case: ifP=> // sub'' [e_v]; rewrite e_v in sub'' *.
+rewrite storebE //= /updm.
+by case: (h ptr)=> [v'|] //= [<-].
+Qed.
+
 Definition lh i (vs : seq value) :=
   if vs is [::] then VNil else VPtr (i, 0)%R.
 
