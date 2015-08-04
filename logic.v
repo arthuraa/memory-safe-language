@@ -50,7 +50,7 @@ Definition effect_leq e e' :=
 Notation "x ⊑ y" := (effect_leq x y) (at level 70, no associativity).
 
 Definition triple e s c s' :=
-  match e with
+  nosimpl match e with
   | No =>
     exists n, eval_com bound_sem s c n = Done s'
 
@@ -75,7 +75,7 @@ Lemma elim_triple_strong e s1 c1 s1' s2 c2 s2' :
   triple e s1 c1 s1' -> triple e s2 c2 s2'.
 Proof.
 case: e=> [] /= ev_loop ev_error ev_ok.
-- by case=> [n ev]; eauto.
+- by case=> [n ev]; rewrite /triple /=; eauto.
 - move=> ev n; move/(_ n): ev; rewrite !inE.
   case/orP=> [] /eqP ev.
     case/(_ _ ev): ev_loop=> [n' lnn' {ev} ev]; apply/orP; left.
