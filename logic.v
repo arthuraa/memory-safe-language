@@ -525,6 +525,42 @@ Qed.
 Definition ll x vs : state :=
   new (names vs) (fun i => (x ::= lh i vs) * lb i vs).
 
+Lemma vars_ll x vs : vars_s (ll x vs) = fset1 x.
+Proof.
+rewrite /ll /new -lock vars_s_hide vars_s_stateu vars_s_locval.
+by rewrite vars_lb fsetU0.
+Qed.
+
+(* MOVE *)
+
+Lemma pub_locval x v : pub (x ::= v) = fset0.
+Proof.
+apply/eqP; rewrite -fsubset0 /locval -lock pubE.
+by rewrite domm0 namesfsE big_nil fsetI0 fsubsetxx.
+Qed.
+
+Lemma pub_ll x vs : pub (ll x vs) = fset0.
+Proof.
+rewrite /ll /new -lock pub_hide.
+rewrite pubU pub_locval fset0U pub_lb.
+by case: vs=> // ??; rewrite fsetD1E fsetDv.
+Qed.
+
+Lemma names_ll x vs : names (ll x vs) = names vs.
+Proof.
+rewrite /ll /new -lock names_hide.
+rewrite names_stateu ?vars_s_locval ?vars_lb 1?fdisjointC ?fdisjoint0 //.
+  rewrite names_locval names_lh names_lb pub_lb.
+  case: vs=> [|v vs] /=; first by rewrite !fset0U namess0 fsetD1E fset0D.
+  move: (_ :: _) (fresh _) (freshP (names (v :: vs))) => {v vs} vs i fr.
+  rewrite fsetUA fsetUid fsetD1U fsetD1E fsetDv fset0U.
+  apply/eqP; rewrite eqEfsubset fsubD1set fsetU1E fsubsetUr /=.
+  apply/fsubsetP=> i' in_v; rewrite in_fsetD1.
+  case: eqP in_v => [->|] //=.
+  by rewrite (negbTE fr).
+by rewrite pub_locval fdisjointC fdisjoint0.
+Qed.
+
 Lemma ll0 x : ll x [::] = x ::= VNil.
 Proof.
 rewrite /ll /= -[RHS]stateus0 -[RHS]new_const namess0; congr new.
@@ -550,18 +586,150 @@ rewrite {1}/rename /= names_disjointE // rename_lh names_disjointE //.
 by rewrite -renamenE names_disjointE // namesnE fdisjoints1.
 Qed.
 
+Lemma ll1' x v vs s :
+  ll x (v :: vs) * s =
+  new (names v :|: names vs :|: names s)
+      (fun i => new (i |: names v :|: names vs :|: names s)
+                    (fun i' =>
+                       x ::= VPtr (i, Posz 0) *
+                       i :-> [:: v; lh i' vs] *
+                       lb i' vs *
+                       s)).
+Proof. admit. Qed.
+
+Coercion Binop : binop >-> Funclass.
+Coercion Var : string >-> expr.
+Coercion Num : int >-> expr.
+
+Lemma eval_exprb_new e A s :
+  (forall i, i \notin A -> i \notin names (eval_exprb e (s i))) ->
+  eval_exprb e (new A s) = eval_exprb e (s (fresh A)).
+Proof.
+move=> fr; rewrite /new -lock.
+move: (fresh _) (fr _ (freshP A))=> {A fr} i; move: (s i)=> {s} s.
+case: s / (fboundP (fset1 i))=> [/= A [ls h] sub1 sub2].
+rewrite hideE !eval_exprbE; case: ifPn=> [sub fresh_i|sub _].
+  rewrite ifT //.
+  apply/fsubsetP=> i' in_e; rewrite in_fsetD1 (fsubsetP _ _ sub _ in_e) andbT.
+  by apply: contraTN in_e=> /eqP ->.
+rewrite ifN //; apply: contra sub=> sub; apply: (fsubset_trans sub).
+by rewrite fsubD1set fsetU1E fsubsetUr.
+Qed.
+
+Lemma eval_exprb_nil s : eval_exprb ENil s = Some VNil.
+Proof.
+case: s / boundP=> [/= A [ls h] sub].
+by rewrite eval_exprbE /= fsub0set.
+Qed.
+
+Lemma eval_exprb_var x v : eval_exprb (Var x) (x ::= v) = Some v.
+Proof.
+by rewrite /locval -lock eval_exprbE /= setmE eqxx /= fsubsetxx.
+Qed.
+
+Lemma eval_exprb_varl x s1 s2 :
+  x \notin vars_s s2 ->
+  eval_exprb (Var x) (s1 * s2) = eval_exprb (Var x) s1.
+Proof.
+case: s1 s2 / bound2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+rewrite stateuE // !eval_exprbE /= vars_sE /= unionmE => /dommPn ->.
+case get: (ls1 _)=> [v|] //=; last by rewrite namesvE !fsub0set.
+case/and3P: mf=> [/fsubsetP mf _ _].
+rewrite [fsubset _ _ in LHS](_ : _ = fsubset (names v) A1) //.
+apply/idP/idP; last by move=> h; apply/fsubsetU; rewrite h.
+move=> /fsubsetP sub {sub1 sub2}; apply/fsubsetP=> i in_v.
+case/(_ _ in_v)/fsetUP: sub=> // in_A2; apply: mf.
+rewrite in_fsetI in_A2 andbT; apply/fsetUP; left; apply/fsetUP; right=> /=.
+by apply/namesfsP; exists v=> //; apply/codommP; eauto.
+Qed.
+
+Lemma eval_exprb_varl' x s1 s2 :
+  x \in vars_s s1 ->
+  eval_exprb (Var x) (s1 * s2) = eval_exprb (Var x) s1.
+Proof.
+case: s1 s2 / bound2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+rewrite stateuE // !eval_exprbE /= vars_sE /= unionmE=> /dommP [v Px].
+rewrite Px /=.
+case/and3P: mf=> [/fsubsetP mf _ _].
+rewrite [fsubset _ _ in LHS](_ : _ = fsubset (names v) A1) //.
+apply/idP/idP; last by move=> h; apply/fsubsetU; rewrite h.
+move=> /fsubsetP sub {sub1 sub2}; apply/fsubsetP=> i in_v.
+case/(_ _ in_v)/fsetUP: sub=> // in_A2; apply: mf.
+rewrite in_fsetI in_A2 andbT; apply/fsetUP; left; apply/fsetUP; right=> /=.
+by apply/namesfsP; exists v=> //; apply/codommP; eauto.
+Qed.
+
+Lemma eval_exprb_varr x s1 s2 :
+  x \notin vars_s s1 ->
+  eval_exprb (Var x) (s1 * s2) = eval_exprb (Var x) s2.
+Proof.
+case: s1 s2 / bound2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+rewrite stateuE // !eval_exprbE /= vars_sE /= unionmE => /dommPn -> /=.
+case get: (ls2 _)=> [v|] //=; last by rewrite namesvE !fsub0set.
+case/and3P: mf=> [_ /fsubsetP mf _].
+rewrite [fsubset _ _ in LHS](_ : _ = fsubset (names v) A2) //.
+apply/idP/idP; last by move=> h; apply/fsubsetU; rewrite h orbT.
+move=> /fsubsetP sub {sub1 sub2}; apply/fsubsetP=> i in_v.
+case/(_ _ in_v)/fsetUP: sub=> // in_A1; apply: mf.
+rewrite in_fsetI in_A1 /=; apply/fsetUP; left; apply/fsetUP; right=> /=.
+by apply/namesfsP; exists v=> //; apply/codommP; eauto.
+Qed.
+
+Lemma eval_exprb_binop v1 v2 b e1 e2 s :
+  eval_exprb e1 s = Some v1 ->
+  eval_exprb e2 s = Some v2 ->
+  eval_exprb (Binop b e1 e2) s = Some (eval_binop b v1 v2).
+Proof.
+case: s / boundP=> [/= A [ls h] sub].
+rewrite !eval_exprbE /=.
+case: ifP=> //= sub1 [<-] {v1}; case: ifP=> //= sub2 [<-] {v2}.
+by rewrite (fsubset_trans (eval_binop_names b _ _)) // fsubUset /= sub1.
+Qed.
+
+Lemma ll1_nil x v vs s :
+  eval_exprb (Eq (Var x) ENil) (ll x (v :: vs) * s) = Some (VBool false).
+Proof.
+rewrite ll1' !eval_exprb_new; first last.
+- move=> i fresh_i; rewrite eval_exprb_new -?stateuA.
+    rewrite (@eval_exprb_binop (VPtr (i, Posz 0)) VNil) //= ?eval_exprb_nil //.
+    by rewrite eval_exprb_varl' ?vars_s_locval ?in_fset1 // eval_exprb_var.
+  move=> i' _; rewrite -!stateuA.
+  rewrite (@eval_exprb_binop (VPtr (i, Posz 0)) VNil) //= ?eval_exprb_nil //.
+  by rewrite eval_exprb_varl' ?vars_s_locval ?in_fset1 // eval_exprb_var.
+- move=> i' _; rewrite -!stateuA.
+  move: (fresh _)=> i.
+  rewrite (@eval_exprb_binop (VPtr (i, Posz 0)) VNil) //= ?eval_exprb_nil //.
+  by rewrite eval_exprb_varl' ?vars_s_locval ?in_fset1 // eval_exprb_var.
+move: (fresh _)=> i; rewrite -!stateuA.
+rewrite (@eval_exprb_binop (VPtr (i, Posz 0)) VNil) //= ?eval_exprb_nil //.
+by rewrite eval_exprb_varl' ?vars_s_locval ?in_fset1 // eval_exprb_var.
+Qed.
+
 Local Open Scope string_scope.
 
 Local Notation "c1 ;; c2" :=
   (Seq c1 c2) (at level 70, right associativity).
 
 Definition listrev :=
-  While (Neg (Binop Eq (Var "x") ENil))
-        (Load "y" (Binop Add (Var "x") (Num 1));;
-         Store (Binop Add (Var "x") (Num 1)) (Var "r");;
-         Assn "r" (Var "x");;
-         Assn "x" (Var "y");;
+  While (Neg (Eq "x" ENil))
+        (Load "y" (Add "x" 1);;
+         Store (Add "x" 1) "r";;
+         Assn "r" "x";;
+         Assn "x" "y";;
          Assn "y" ENil).
+
+Lemma eval_exprb_neg e s :
+  eval_exprb (Neg e) s =
+  match eval_exprb e s with
+  | Some (VBool b) => Some (VBool (~~ b))
+  | _ => Some VNil
+  end.
+Proof.
+case: s / boundP=> [/= A [ls h] sub].
+rewrite !eval_exprbE /=.
+case ev: eval_expr => [b| | |]; rewrite !namesvE fsub0set //.
+by case: ifP.
+Qed.
 
 Lemma listrev_spec vs :
   triple No
@@ -569,13 +737,32 @@ Lemma listrev_spec vs :
          listrev
          ("x" ::= VNil * ll "r" (rev vs) * "y" ::= VNil).
 Proof.
-(*rewrite -(ll0 "r") -[rev vs]cats0.
+rewrite -(ll0 "r") -[rev vs]cats0.
 elim: vs [::] => [|v vs IH] vs'.
   rewrite /rev /= !ll0 /listrev; apply: triple_while.
-  admit.
-rewrite rev_cons cat_rcons {1}/ll /=. -stateuA new_stateul; last first.
-  move=> pm dis /= i; rewrite !rename_stateu rename_locval; congr stateu.
-*)
+  rewrite eval_exprb_neg (@eval_exprb_binop VNil VNil) /=.
+  - exact: triple_skip.
+  - rewrite -stateuA eval_exprb_varl ?eval_exprb_var //.
+    rewrite vars_s_stateu vars_ll vars_s_locval in_fsetU.
+    (* Something gets very slow if we try to proceed directly here... *)
+    by rewrite negb_or; apply/andP; split; rewrite in_fset1.
+  exact: eval_exprb_nil.
+rewrite rev_cons cat_rcons -stateuA; apply: triple_while.
+rewrite eval_exprb_neg ll1_nil /=.
+apply: (triple_seq _ (IH _)).
+rewrite [ll _ vs * _]stateuC; first last.
+- rewrite pub_ll fdisjoint0 //.
+- by rewrite !vars_ll; apply/fdisjointP=> x /fset1P ->; rewrite in_fset1.
+rewrite -stateuA ll1' {-7}(lock stateu) ll1' -!lock.
+rewrite names_stateu ?names_ll ?vars_ll ?vars_s_locval; first last.
+- by rewrite pub_ll fdisjoint0.
+- by apply/fdisjointP=> ? /fset1P ->; rewrite in_fset1.
+rewrite names_locval fsetU0 names_stateu; first last.
+- by rewrite pub_ll fdisjoint0.
+- rewrite vars_ll vars_s_locval.
+  by apply/fdisjointP=> ? /fset1P ->; rewrite in_fset1.
+rewrite names_ll names_locval fsetU0.
+rewrite -![_ :|: names vs' :|: _]fsetUA.
 admit.
 Qed.
 
