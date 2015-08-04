@@ -259,10 +259,11 @@ Lemma rename_eval_expr pm ls e :
   rename pm (eval_expr true ls e) =
   eval_expr true (rename pm ls) e.
 Proof.
-elim: e=> [x|n|b e1 IH1 e2 IH2| |e IH] //=.
-  rewrite renamemE /= renameT.
+elim: e=> [x|n|b e1 IH1 e2 IH2|e IH| |e IH] //=.
+- rewrite renamemE /= renameT.
   by case: (ls x)=> [v|] //=.
-by rewrite rename_eval_binop IH1 IH2.
+- by rewrite rename_eval_binop IH1 IH2.
+by rewrite -IH; case: eval_expr.
 Qed.
 
 Lemma names_stateu s1 s2 :

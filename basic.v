@@ -40,6 +40,7 @@ Inductive expr :=
 | Var of string
 | Num of int
 | Binop of binop & expr & expr
+| Neg of expr
 | ENil
 | Cast of expr.
 
@@ -168,6 +169,9 @@ Fixpoint eval_expr safe ls e :=
   | Num n => VNum n
   | Binop b e1 e2 => eval_binop b (eval_expr safe ls e1) (eval_expr safe ls e2)
   | ENil => VNil
+  | Neg e =>
+    if eval_expr safe ls e is VBool b then VBool (~~ b)
+    else VNil
   | Cast e =>
     let v := eval_expr safe ls e in
     if safe then v
@@ -405,6 +409,7 @@ Fixpoint vars_e e :=
   | Num _ => fset0
   | Binop _ e1 e2 => vars_e e1 :|: vars_e e2
   | ENil => fset0
+  | Neg e => vars_e e
   | Cast e => vars_e e
   end.
 
@@ -428,9 +433,10 @@ Lemma eval_expr_unionm safe ls1 ls2 e :
   eval_expr safe (unionm ls1 ls2) e =
   eval_expr safe ls1 e.
 Proof.
-elim: e => [x|n|b e1 IH1 e2 IH2| |e IH] //=.
+elim: e => [x|n|b e1 IH1 e2 IH2|e IH| |e IH] //=.
 - by rewrite fsub1set unionmE => /dommP [v ->].
 - by rewrite fsubUset=> /andP [/IH1 {IH1} -> /IH2 {IH2} ->].
+- by case: safe IH=> // IH sub; rewrite IH.
 by case: safe IH=> // IH sub; rewrite IH.
 Qed.
 
@@ -446,12 +452,13 @@ Qed.
 Lemma eval_expr_names safe ls e :
   fsubset (names (eval_expr safe ls e)) (names ls).
 Proof.
-elim: e=> [x|n|b e1 IH1 e2 IH2| |e IH] //=; try by rewrite fsub0set.
+elim: e=> [x|n|b e1 IH1 e2 IH2|e IH| |e IH] //=; try by rewrite fsub0set.
 - case get_x: (ls x) => [[b|n|p|]|] //=; try by rewrite fsub0set.
   apply/fsubsetP=> i; rewrite namesvE => /fset1P -> {i}.
   apply/namesmP; eapply PMFreeNamesVal; eauto.
   by rewrite namesvE; apply/namesnP.
 - by rewrite (fsubset_trans (eval_binop_names b _ _)) // fsubUset IH1 IH2.
+- by case: eval_expr => // *; rewrite fsub0set.
 case: safe IH=> //.
 by case: (eval_expr _ _ _)=> [b|n|p|]; rewrite fsub0set.
 Qed.
