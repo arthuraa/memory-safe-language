@@ -524,13 +524,14 @@ rewrite rename_stateu rename_blockat renamesE /=.
 by rewrite !rename_lh renamenE IH // fpermKV.
 Qed.
 
-(* Locking new here solves the ll1' problem below, it seems *)
-Definition ll x vs : state :=
+Lemma ll_key : unit. Proof. exact: tt. Qed.
+Definition ll_def x vs : state :=
   new (names vs) (fun i => (x ::= lh i vs) * lb i vs).
+Definition ll := locked_with ll_key ll_def.
 
 Lemma vars_ll x vs : vars_s (ll x vs) = fset1 x.
 Proof.
-rewrite /ll /new vars_s_hide vars_s_stateu vars_s_locval.
+rewrite [ll]unlock /new vars_s_hide vars_s_stateu vars_s_locval.
 by rewrite vars_lb fsetU0.
 Qed.
 
@@ -544,14 +545,14 @@ Qed.
 
 Lemma pub_ll x vs : pub (ll x vs) = fset0.
 Proof.
-rewrite /ll /new pub_hide.
+rewrite [ll]unlock /new pub_hide.
 rewrite pubU pub_locval fset0U pub_lb.
 by case: vs=> // ??; rewrite fsetD1E fsetDv.
 Qed.
 
 Lemma names_ll x vs : names (ll x vs) = names vs.
 Proof.
-rewrite /ll /new names_hide.
+rewrite [ll]unlock /new names_hide.
 rewrite names_stateu ?vars_s_locval ?vars_lb 1?fdisjointC ?fdisjoint0 //.
   rewrite names_locval names_lh names_lb pub_lb.
   case: vs=> [|v vs] /=; first by rewrite !fset0U namess0 fsetD1E fset0D.
@@ -566,8 +567,8 @@ Qed.
 
 Lemma ll0 x : ll x [::] = x ::= VNil.
 Proof.
-rewrite /ll /= -[RHS]stateus0 -[RHS]new_const namess0; congr new.
-by rewrite stateus0 names_locval.
+rewrite [ll]unlock /ll_def /= -[RHS]stateus0 -[RHS]new_const namess0.
+by congr new; rewrite stateus0 names_locval.
 Qed.
 
 Lemma ll1 x v vs :
@@ -579,7 +580,8 @@ Lemma ll1 x v vs :
                        i :-> [:: v; lh i' vs] *
                        lb i' vs)).
 Proof.
-rewrite /ll namess1; apply/newP=> i Pn /=; rewrite namess1 new_stateur.
+rewrite [ll]unlock /ll_def /= namess1; apply/newP=> i Pn /=.
+rewrite new_stateur.
   rewrite names_locval namesvE /= !fsetU1E !fsetUA fsetUid.
   by apply/newP=> ??; rewrite stateuA.
 move=> pm.
@@ -756,8 +758,7 @@ apply: (triple_seq _ (IH _)).
 rewrite [ll _ vs * _]stateuC; first last.
 - rewrite pub_ll fdisjoint0 //.
 - by rewrite !vars_ll; apply/fdisjointP=> x /fset1P ->; rewrite in_fset1.
-(* FIXME: Removing the lock here causes the second ll1' rewrite to take forever *)
-rewrite -stateuA ll1' {1 2 3}[ll]lock ll1' -lock.
+rewrite -stateuA !ll1'.
 rewrite names_stateu ?names_ll ?vars_ll ?vars_s_locval; first last.
 - by rewrite pub_ll fdisjoint0.
 - by apply/fdisjointP=> ? /fset1P ->; rewrite in_fset1.
