@@ -371,6 +371,15 @@ apply/fsetU1P; right; apply/namessP; exists (nth VNil vs n')=> //.
 by apply/(nthP VNil); eauto.
 Qed.
 
+Lemma loadbl v s1 s2 ptr :
+  loadb s1 ptr = Some v ->
+  loadb (s1 * s2) ptr = Some v.
+Proof.
+case: s1 s2 / (fbound2P (names ptr))
+  => [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2 sub3 sub4].
+admit.
+Qed.
+
 Lemma triple_load s x e ptr v :
   eval_exprb e s = Some (VPtr ptr) ->
   loadb s ptr = Some v ->
@@ -725,6 +734,12 @@ case ev: eval_expr => [b| | |]; rewrite !namesvE fsub0set //.
 by case: ifP.
 Qed.
 
+Lemma setlU s1 s2 x v :
+  setl (s1 * s2) x v =
+  if x \in vars_s s1 then setl s1 x v * s2
+  else s1 * setl s2 x v.
+Proof. admit. Qed.
+
 Lemma listrev_spec vs :
   triple No
          (ll "x" vs * "r" ::= VNil * "y" ::= VNil)
@@ -773,8 +788,13 @@ apply: (triple_seq (@triple_load _ _ _ (i', Posz 1) (lh i vs) _ _)).
     rewrite -!stateuA eval_exprb_varl' ?eval_exprb_var //.
     by rewrite vars_s_locval in_fset1.
   by rewrite eval_exprb_num.
-- admit.
-admit.
+- apply: loadbl; apply: loadbl.
+  rewrite stateuC ?vars_s_blockat ?pub_locval
+          ?[fdisjoint _ fset0]fdisjointC ?fdisjoint0 //.
+  by apply: loadbl; rewrite loadbp eqxx.
+rewrite stateuA setlU !vars_s_stateu vars_s_locval !in_fsetU in_fset1 /=.
+rewrite vars_s_blockat vars_lb vars_ll in_fset1 /=.
+rewrite setlx.
 Qed.
 
 End Logic.
