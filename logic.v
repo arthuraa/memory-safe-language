@@ -577,7 +577,7 @@ Qed.
 Lemma ll1' x v vs s :
   ll x (v :: vs) * s =
   new (names v :|: names vs :|: names s)
-      (fun i => new (i |: names v :|: names vs :|: names s)
+      (fun i => new (i |: (names v :|: names vs :|: names s))
                     (fun i' =>
                        x ::= VPtr (i, Posz 0) *
                        i :-> [:: v; lh i' vs] *
@@ -674,6 +674,12 @@ case: ifP=> //= sub1 [<-] {v1}; case: ifP=> //= sub2 [<-] {v2}.
 by rewrite (fsubset_trans (eval_binop_names b _ _)) // fsubUset /= sub1.
 Qed.
 
+Lemma eval_exprb_num n s : eval_exprb (Num n) s = Some (VNum n).
+Proof.
+case: s / boundP=> [/= A [ls h] sub]; rewrite eval_exprbE /=.
+by rewrite namesvE fsub0set.
+Qed.
+
 Lemma ll1_nil x v vs s :
   eval_exprb (Eq (Var x) ENil) (ll x (v :: vs) * s) = Some (VBool false).
 Proof.
@@ -732,7 +738,7 @@ elim: vs [::] => [|v vs IH] vs'.
   - exact: triple_skip.
   - rewrite -stateuA eval_exprb_varl ?eval_exprb_var //.
     rewrite vars_s_stateu vars_ll vars_s_locval in_fsetU.
-    (* Something gets very slow if we try to proceed directly here... *)
+    (* FIXME: Something gets very slow if we try to proceed directly here... *)
     by rewrite negb_or; apply/andP; split; rewrite in_fset1.
   exact: eval_exprb_nil.
 rewrite rev_cons cat_rcons -stateuA; apply: triple_while.
@@ -750,7 +756,24 @@ rewrite names_locval fsetU0 names_stateu; first last.
 - rewrite vars_ll vars_s_locval.
   by apply/fdisjointP=> ? /fset1P ->; rewrite in_fset1.
 rewrite names_ll names_locval fsetU0.
-rewrite -![_ :|: names vs' :|: _]fsetUA.
+rewrite -![_ :|: names vs' :|: _]fsetUA [names vs' :|: _]fsetUC fsetUA.
+rewrite newC; last first.
+  move=> pm; rewrite !fdisjointUr -andbA => /and3P [disv disvs disvs'] /=.
+  move=> [i i'] /=.
+  rewrite !rename_stateu !rename_locval rename_blockat rename_lb.
+  rewrite [_ _ (ll _ vs')]names_disjointE ?names_ll //.
+  rewrite [rename _ [:: _; _]]/rename /= [rename pm v]names_disjointE //.
+  by rewrite rename_lh [rename _ vs]names_disjointE //.
+apply: triple_restriction=> i; rewrite !in_fsetU !negb_or -andbA.
+case/and3P=> [i_v i_vs i_vs'].
+apply: triple_restriction=> i'; rewrite in_fsetU1 !in_fsetU !negb_or -andbA.
+case/and4P=> [ii' i'_v i'_vs i'_vs'].
+apply: (triple_seq (@triple_load _ _ _ (i', Posz 1) (lh i vs) _ _)).
+- rewrite (@eval_exprb_binop (VPtr (i', Posz 0)) (VNum 1)) //.
+    rewrite -!stateuA eval_exprb_varl' ?eval_exprb_var //.
+    by rewrite vars_s_locval in_fset1.
+  by rewrite eval_exprb_num.
+- admit.
 admit.
 Qed.
 
