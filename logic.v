@@ -189,25 +189,16 @@ by rewrite (frame_ok sub dis' ev).
 Qed.
 
 Lemma triple_restriction e A s c s' :
-  finsupp A s -> finsupp A s' ->
   (forall n, n \notin A -> triple e (s n) c (s' n)) ->
   triple e (new A s) c (new A s').
 Proof.
-move=> fs fs'; move: (fresh _) (freshP A) => n Pn.
-have R: forall n' (s : name -> state),
-          n' \notin A -> finsupp A s ->
-          s n' = rename (fperm2 n n') (s n).
-  move=> {s s' fs fs'} n' s Pn' /(_ (fperm2 n n')) ->.
-    by rewrite renamenE fperm2L.
-  apply: (fdisjoint_trans (fsubset_supp_fperm2 _ _)).
-  by apply/fdisjointP=> n'' /fset2P [] ->.
-move=> /(_ _ Pn); apply: elim_triple=> [k ev|k _ ev|k ev].
-- apply/restriction_loop=> // n' Pn'.
-  by rewrite R // -renaming ev.
-- apply/restriction_error=> // n' Pn'.
-  by rewrite R // -renaming ev.
-apply/restriction_ok=> // n' Pn'.
-by rewrite R // [in RHS]R // -renaming ev.
+move=> /(_ _ (freshP A)); apply: elim_triple=> [k ev|k _ ev|k ev].
+- apply/restriction_loop.
+  by rewrite // -renaming ev.
+- apply/restriction_error.
+  by rewrite // -renaming ev.
+apply/restriction_ok.
+by rewrite // [in RHS]R // -renaming ev.
 Qed.
 
 Definition eval_exprb e (s : state) : option value :=

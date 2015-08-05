@@ -870,27 +870,24 @@ by rewrite hideT; case: (expose _).
 Qed.
 
 Lemma restriction_ok A (s s' : name -> state) c k :
-  (forall n, n \notin A -> eval_com bound_sem (s n) c k = Done (s' n)) ->
+  (eval_com bound_sem (s (fresh A)) c k = Done (s' (fresh A))) ->
   eval_com bound_sem (new A s) c k = Done (new A s').
 Proof.
-move=> e; rewrite /new; move: (fresh _) (freshP A)=> n ninA.
-by rewrite eval_com_hide e.
+by move=> e; rewrite /new; rewrite eval_com_hide e.
 Qed.
 
 Lemma restriction_error A (s : name -> state) c k :
-  (forall n, n \notin A -> eval_com bound_sem (s n) c k = Error) ->
+  (eval_com bound_sem (s (fresh A)) c k = Error) ->
   eval_com bound_sem (new A s) c k = Error.
 Proof.
-move=> e; rewrite /new; move: (fresh _) (freshP A)=> n ninA.
-by rewrite eval_com_hide e.
+move=> e; rewrite /new; by rewrite eval_com_hide e.
 Qed.
 
 Lemma restriction_loop A (s : name -> state) c k :
-  (forall n, n \notin A -> eval_com bound_sem (s n) c k = NotYet) ->
+  (eval_com bound_sem (s (fresh A)) c k = NotYet) ->
   eval_com bound_sem (new A s) c k = NotYet.
 Proof.
-move=> e; rewrite /new; move: (fresh _) (freshP A)=> n ninA.
-by rewrite eval_com_hide e.
+move=> e; rewrite /new; by rewrite eval_com_hide e.
 Qed.
 
 Theorem frame_ok s1 s1' s2 c k :
