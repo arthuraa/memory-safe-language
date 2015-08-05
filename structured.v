@@ -205,6 +205,12 @@ have get_x: setm emptym x v x = Some v by rewrite setmE eqxx.
 eapply PMFreeNamesVal; eauto.
 Qed.
 
+Lemma pub_locval x v : pub (x ::= v) = fset0.
+Proof.
+apply/eqP; rewrite -fsubset0 /locval pubE.
+by rewrite domm0 namesfsE big_nil fsetI0 fsubsetxx.
+Qed.
+
 Lemma rename_locval s x v :
   rename s (x ::= v) = x ::= rename s v.
 Proof.

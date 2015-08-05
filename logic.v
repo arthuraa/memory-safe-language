@@ -535,14 +535,6 @@ rewrite [ll]unlock /new vars_s_hide vars_s_stateu vars_s_locval.
 by rewrite vars_lb fsetU0.
 Qed.
 
-(* MOVE *)
-
-Lemma pub_locval x v : pub (x ::= v) = fset0.
-Proof.
-apply/eqP; rewrite -fsubset0 /locval pubE.
-by rewrite domm0 namesfsE big_nil fsetI0 fsubsetxx.
-Qed.
-
 Lemma pub_ll x vs : pub (ll x vs) = fset0.
 Proof.
 rewrite [ll]unlock /new pub_hide.
