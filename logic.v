@@ -585,8 +585,7 @@ rewrite /ll namess1; apply/newP=> i Pn /=; rewrite namess1 new_stateur.
 move=> pm.
 rewrite fsetU1E !fdisjointUr fdisjoints1 => /and3P [Pi Pv Pvs] i'.
 rewrite !rename_stateu rename_lb rename_blockat /=.
-(* FIXME: replacing "; last done" by "//" causes it to take a long time *)
-rewrite {1}/rename /= names_disjointE // rename_lh names_disjointE; last done.
+rewrite {1}/rename /= names_disjointE // rename_lh names_disjointE //.
 by rewrite -renamenE names_disjointE // namesnE fdisjoints1.
 Qed.
 
@@ -759,7 +758,6 @@ rewrite [ll _ vs * _]stateuC; first last.
 - by rewrite !vars_ll; apply/fdisjointP=> x /fset1P ->; rewrite in_fset1.
 (* FIXME: Removing the lock here causes the second ll1' rewrite to take forever *)
 rewrite -stateuA ll1' {1 2 3}[ll]lock ll1' -lock.
-(* FIXME: rewriting by names_stateu takes forever. *)
 rewrite names_stateu ?names_ll ?vars_ll ?vars_s_locval; first last.
 - by rewrite pub_ll fdisjoint0.
 - by apply/fdisjointP=> ? /fset1P ->; rewrite in_fset1.

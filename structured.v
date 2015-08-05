@@ -22,9 +22,13 @@ Implicit Types (ls : locals) (h : heap).
 
 Definition state := {bound locals * heap}.
 
-(* FIXME: Lock stateu? The next basic proofs are pretty slow. *)
-Definition stateu : state -> state -> state :=
+(* XXX: The term below, while seemingly innocent, gets actually quite
+   big when printed out fully. Maybe this suggests a refactoring in
+   the basic definitions to make terms smaller? *)
+Lemma stateu_key : unit. Proof. exact: tt. Qed.
+Definition stateu_def : state -> state -> state :=
   mapb2 (fun s1 s2 => (unionm s1.1 s2.1, unionm s1.2 s2.2)).
+Definition stateu := locked_with stateu_key stateu_def.
 
 Notation "s1 * s2" := (stateu s1 s2) : state_scope.
 
@@ -35,7 +39,7 @@ Lemma stateuE A1 ls1 h1 A2 ls2 h2 :
   mask A1 (ls1, h1) * mask A2 (ls2, h2) =
   mask (A1 :|: A2) (unionm ls1 ls2, unionm h1 h2).
 Proof.
-move=> mf; rewrite /stateu /=.
+move=> mf; rewrite [stateu]unlock /stateu_def /=.
 rewrite mapb2E //= => {ls1 h1 ls2 h2 mf} /= pm [[ls1 h1] [ls2 h2]] /=.
 by rewrite !renamepE !renamem_union.
 Qed.
@@ -43,7 +47,7 @@ Qed.
 Lemma rename_stateu pm (s1 s2 : state) :
   rename pm (s1 * s2) = rename pm s1 * rename pm s2.
 Proof.
-rewrite /stateu rename_mapb2 //=.
+rewrite [stateu]unlock /stateu_def rename_mapb2 //=.
 move=> {pm s1 s2} pm /= [[ls1 h1] [ls2 h2]] /=.
 by rewrite !renamepE !renamem_union.
 Qed.
@@ -55,7 +59,7 @@ Proof. by rewrite /emp namesbE // fsub0set. Qed.
 
 Lemma stateu0s : left_id emp stateu.
 Proof.
-rewrite /stateu /=.
+rewrite [stateu]unlock /stateu_def /=.
 apply: bound_left_id=> /=.
   move=> /= s [[ls1 h1] [ls2 h2]] /=.
   by rewrite renamepE /= !renamem_union.
@@ -64,7 +68,7 @@ Qed.
 
 Lemma stateus0 : right_id emp stateu.
 Proof.
-rewrite /stateu; apply: bound_right_id=> /=.
+rewrite [stateu]unlock; apply: bound_right_id=> /=.
   move=> /= s [[ls1 h1] [ls2 h2]] /=.
   by rewrite renamepE /= !renamem_union.
 by move=> [ls h] /=; rewrite !unionm0.
@@ -72,7 +76,7 @@ Qed.
 
 Lemma stateuA : associative stateu.
 Proof.
-rewrite /stateu; apply: bound_associative => /=.
+rewrite [stateu]unlock; apply: bound_associative => /=.
   move=> /= s [[ls1 h1] [ls2 h2]] /=.
   by rewrite renamepE /= !renamem_union.
 by move=> [ls1 h1] [ls2 h2] [ls3 h3] /=; rewrite !unionmA.
@@ -82,7 +86,7 @@ Lemma new_stateul A (f : name -> state) s :
   finsupp A f ->
   new A f * s = new (A :|: names s) (fun a => f a * s).
 Proof.
-move=> fs_f; rewrite /stateu /= new_comp2l //=.
+move=> fs_f; rewrite [stateu]unlock /stateu_def /= new_comp2l //=.
 move=> /= {s} pm [[ls1 h1] [ls2 h2]] /=.
 by rewrite renamepE /= !renamem_union.
 Qed.
@@ -91,7 +95,7 @@ Lemma new_stateur s A (f : name -> state) :
   finsupp A f ->
   s * new A f = new (names s :|: A) (fun a => s * f a).
 Proof.
-move=> fs_f; rewrite /stateu /= new_comp2r //=.
+move=> fs_f; rewrite [stateu]unlock /stateu_def /= new_comp2r //=.
 move=> /= {s} pm [[ls1 h1] [ls2 h2]] /=.
 by rewrite renamepE /= !renamem_union.
 Qed.
@@ -847,7 +851,7 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - rewrite /bound_alloc /bound_eval_nat -lock /=.
   rewrite -hide_mapb; last exact: rename_eval_nat.
   rewrite hideT; case: (expose _)=> //= sz.
-  rewrite /stateu /= hide_mapb2r //=.
+  rewrite [stateu]unlock /stateu_def /= hide_mapb2r //=.
     by move=> s' [[ls1 h1] [ls2 h2]]; rewrite !renamepE /= !renamem_union.
   by rewrite names_newblock in_fset0.
 - rewrite /bound_free -lock /= -hide_mapb; last exact: rename_free.
