@@ -455,13 +455,13 @@ Proof. by case: vs=> //= _ _; rewrite namesvE. Qed.
 Lemma vars_lb i vs : vars_s (lb i vs) = fset0.
 Proof.
 elim: vs i => /= [|v vs IH] /= i; first by rewrite vars_emp.
-by rewrite /new -lock vars_s_hide vars_s_stateu vars_s_blockat IH fsetU0.
+by rewrite /new vars_s_hide vars_s_stateu vars_s_blockat IH fsetU0.
 Qed.
 
 Lemma pub_lb i vs : pub (lb i vs) = if vs is [::] then fset0 else fset1 i.
 Proof.
 elim: vs i=> //= [|v vs IH] i; first by rewrite pub_emp.
-rewrite /new -lock pub_hide.
+rewrite /new pub_hide.
 move: (fresh _) (freshP (i |: names (v :: vs)))=> i'.
 rewrite in_fsetU1 namess1 in_fsetU !negb_or => /and3P [ii' iv ivs].
 rewrite pubU IH pub_blockat.
@@ -481,7 +481,7 @@ Lemma names_lb i vs :
 Proof.
 elim: vs i => [|v vs IH] i /=.
   by rewrite names_emp pub_emp fset0U namess0.
-rewrite /new -lock.
+rewrite /new.
 move: (fresh _) (freshP (i |: names (v :: vs)))=> i'.
 rewrite namess1 => nin.
 move: (nin); rewrite in_fsetU1 in_fsetU !negb_or=> /and3P [ii' ninv ninvs].
@@ -516,18 +516,19 @@ rewrite rename_new; last first.
 rewrite (_ : pm i |: _ = pm @: (i |: names (v :: vs))); last first.
   by rewrite imfsetU1 -names_rename renamesE.
 set A := pm @: (i |: _).
-rewrite /new -!lock /=.
+rewrite /new /=.
 move: (fresh _) (freshP A)=> n ninA /=.
 rewrite rename_stateu rename_blockat renamesE /=.
 by rewrite !rename_lh renamenE IH // fpermKV.
 Qed.
 
+(* Locking new here solves the ll1' problem below, it seems *)
 Definition ll x vs : state :=
   new (names vs) (fun i => (x ::= lh i vs) * lb i vs).
 
 Lemma vars_ll x vs : vars_s (ll x vs) = fset1 x.
 Proof.
-rewrite /ll /new -lock vars_s_hide vars_s_stateu vars_s_locval.
+rewrite /ll /new vars_s_hide vars_s_stateu vars_s_locval.
 by rewrite vars_lb fsetU0.
 Qed.
 
@@ -535,20 +536,20 @@ Qed.
 
 Lemma pub_locval x v : pub (x ::= v) = fset0.
 Proof.
-apply/eqP; rewrite -fsubset0 /locval -lock pubE.
+apply/eqP; rewrite -fsubset0 /locval pubE.
 by rewrite domm0 namesfsE big_nil fsetI0 fsubsetxx.
 Qed.
 
 Lemma pub_ll x vs : pub (ll x vs) = fset0.
 Proof.
-rewrite /ll /new -lock pub_hide.
+rewrite /ll /new pub_hide.
 rewrite pubU pub_locval fset0U pub_lb.
 by case: vs=> // ??; rewrite fsetD1E fsetDv.
 Qed.
 
 Lemma names_ll x vs : names (ll x vs) = names vs.
 Proof.
-rewrite /ll /new -lock names_hide.
+rewrite /ll /new names_hide.
 rewrite names_stateu ?vars_s_locval ?vars_lb 1?fdisjointC ?fdisjoint0 //.
   rewrite names_locval names_lh names_lb pub_lb.
   case: vs=> [|v vs] /=; first by rewrite !fset0U namess0 fsetD1E fset0D.
@@ -582,7 +583,8 @@ rewrite /ll namess1; apply/newP=> i Pn /=; rewrite namess1 new_stateur.
 move=> pm.
 rewrite fsetU1E !fdisjointUr fdisjoints1 => /and3P [Pi Pv Pvs] i'.
 rewrite !rename_stateu rename_lb rename_blockat /=.
-rewrite {1}/rename /= names_disjointE // rename_lh names_disjointE //.
+(* FIXME: replacing "; last done" by "//" causes it to take a long time *)
+rewrite {1}/rename /= names_disjointE // rename_lh names_disjointE; last done.
 by rewrite -renamenE names_disjointE // namesnE fdisjoints1.
 Qed.
 
@@ -605,7 +607,7 @@ Lemma eval_exprb_new e A s :
   (forall i, i \notin A -> i \notin names (eval_exprb e (s i))) ->
   eval_exprb e (new A s) = eval_exprb e (s (fresh A)).
 Proof.
-move=> fr; rewrite /new -lock.
+move=> fr; rewrite /new.
 move: (fresh _) (fr _ (freshP A))=> {A fr} i; move: (s i)=> {s} s.
 case: s / (fboundP (fset1 i))=> [/= A [ls h] sub1 sub2].
 rewrite hideE !eval_exprbE; case: ifPn=> [sub fresh_i|sub _].
@@ -624,7 +626,7 @@ Qed.
 
 Lemma eval_exprb_var x v : eval_exprb (Var x) (x ::= v) = Some v.
 Proof.
-by rewrite /locval -lock eval_exprbE /= setmE eqxx /= fsubsetxx.
+by rewrite /locval eval_exprbE /= setmE eqxx /= fsubsetxx.
 Qed.
 
 Lemma eval_exprb_varl x s1 s2 :
@@ -753,7 +755,9 @@ apply: (triple_seq _ (IH _)).
 rewrite [ll _ vs * _]stateuC; first last.
 - rewrite pub_ll fdisjoint0 //.
 - by rewrite !vars_ll; apply/fdisjointP=> x /fset1P ->; rewrite in_fset1.
-rewrite -stateuA ll1' {-7}(lock stateu) ll1' -!lock.
+(* FIXME: Removing the lock here causes the second ll1' rewrite to take forever *)
+rewrite -stateuA ll1' {1 2 3}[ll]lock ll1' -lock.
+(* FIXME: rewriting by names_stateu takes forever. *)
 rewrite names_stateu ?names_ll ?vars_ll ?vars_s_locval; first last.
 - by rewrite pub_ll fdisjoint0.
 - by apply/fdisjointP=> ? /fset1P ->; rewrite in_fset1.

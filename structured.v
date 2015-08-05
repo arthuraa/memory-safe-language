@@ -23,7 +23,7 @@ Implicit Types (ls : locals) (h : heap).
 Definition state := {bound locals * heap}.
 
 Definition stateu : state -> state -> state :=
-  locked mapb2 _ _ _ (fun s1 s2 => (unionm s1.1 s2.1, unionm s1.2 s2.2)).
+  mapb2 (fun s1 s2 => (unionm s1.1 s2.1, unionm s1.2 s2.2)).
 
 Notation "s1 * s2" := (stateu s1 s2) : state_scope.
 
@@ -34,7 +34,7 @@ Lemma stateuE A1 ls1 h1 A2 ls2 h2 :
   mask A1 (ls1, h1) * mask A2 (ls2, h2) =
   mask (A1 :|: A2) (unionm ls1 ls2, unionm h1 h2).
 Proof.
-move=> mf; rewrite /stateu -lock /=.
+move=> mf; rewrite /stateu /=.
 rewrite mapb2E //= => {ls1 h1 ls2 h2 mf} /= pm [[ls1 h1] [ls2 h2]] /=.
 by rewrite !renamepE !renamem_union.
 Qed.
@@ -42,7 +42,7 @@ Qed.
 Lemma rename_stateu pm (s1 s2 : state) :
   rename pm (s1 * s2) = rename pm s1 * rename pm s2.
 Proof.
-rewrite /stateu -lock rename_mapb2 //=.
+rewrite /stateu rename_mapb2 //=.
 move=> {pm s1 s2} pm /= [[ls1 h1] [ls2 h2]] /=.
 by rewrite !renamepE !renamem_union.
 Qed.
@@ -54,7 +54,7 @@ Proof. by rewrite /emp namesbE // fsub0set. Qed.
 
 Lemma stateu0s : left_id emp stateu.
 Proof.
-rewrite /stateu -lock /=.
+rewrite /stateu /=.
 apply: bound_left_id=> /=.
   move=> /= s [[ls1 h1] [ls2 h2]] /=.
   by rewrite renamepE /= !renamem_union.
@@ -63,7 +63,7 @@ Qed.
 
 Lemma stateus0 : right_id emp stateu.
 Proof.
-rewrite /stateu -lock; apply: bound_right_id=> /=.
+rewrite /stateu; apply: bound_right_id=> /=.
   move=> /= s [[ls1 h1] [ls2 h2]] /=.
   by rewrite renamepE /= !renamem_union.
 by move=> [ls h] /=; rewrite !unionm0.
@@ -71,7 +71,7 @@ Qed.
 
 Lemma stateuA : associative stateu.
 Proof.
-rewrite /stateu -lock; apply: bound_associative => /=.
+rewrite /stateu; apply: bound_associative => /=.
   move=> /= s [[ls1 h1] [ls2 h2]] /=.
   by rewrite renamepE /= !renamem_union.
 by move=> [ls1 h1] [ls2 h2] [ls3 h3] /=; rewrite !unionmA.
@@ -81,7 +81,7 @@ Lemma new_stateul A (f : name -> state) s :
   finsupp A f ->
   new A f * s = new (A :|: names s) (fun a => f a * s).
 Proof.
-move=> fs_f; rewrite /stateu -lock /= new_comp2l //=.
+move=> fs_f; rewrite /stateu /= new_comp2l //=.
 move=> /= {s} pm [[ls1 h1] [ls2 h2]] /=.
 by rewrite renamepE /= !renamem_union.
 Qed.
@@ -90,17 +90,17 @@ Lemma new_stateur s A (f : name -> state) :
   finsupp A f ->
   s * new A f = new (names s :|: A) (fun a => s * f a).
 Proof.
-move=> fs_f; rewrite /stateu -lock /= new_comp2r //=.
+move=> fs_f; rewrite /stateu /= new_comp2r //=.
 move=> /= {s} pm [[ls1 h1] [ls2 h2]] /=.
 by rewrite renamepE /= !renamem_union.
 Qed.
 
 Definition vars_s (s : state) : {fset string} :=
-  locked (@expose _ \o mapb (fun s => domm s.1)) s.
+  expose (mapb (fun s => domm s.1) s).
 
 Lemma vars_sE A ls h : vars_s (mask A (ls, h)) = domm ls.
 Proof.
-rewrite /vars_s /= -lock /= mapbE ?exposeE //.
+rewrite /vars_s /= mapbE ?exposeE //.
 by move=> pm /= {ls h} [ls h] /=; rewrite -renamem_dom.
 Qed.
 
@@ -181,7 +181,7 @@ by rewrite in_fsetI !in_fsetU /= in_h1 in_h2 !orbT.
 Qed.
 
 Definition locval (x : string) (v : value) : state :=
-  locked (mask (names v) (setm emptym x v, emptym)).
+  mask (names v) (setm emptym x v, emptym).
 
 Notation "x ::= v" := (locval x v) (at level 20) : state_scope.
 
@@ -189,12 +189,12 @@ Local Open Scope state_scope.
 
 Lemma vars_s_locval x v : vars_s (x ::= v) = fset1 x.
 Proof.
-by rewrite /locval -lock vars_sE domm_set domm0 fsetU1E fsetU0.
+by rewrite /locval vars_sE domm_set domm0 fsetU1E fsetU0.
 Qed.
 
 Lemma names_locval x v : names (x ::= v) = names v.
 Proof.
-rewrite /locval -lock namesbE //; apply/fsubsetU/orP; left=> /=.
+rewrite /locval namesbE //; apply/fsubsetU/orP; left=> /=.
 apply/fsubsetP=> n inN; apply/namesmP.
 have get_x: setm emptym x v x = Some v by rewrite setmE eqxx.
 eapply PMFreeNamesVal; eauto.
@@ -203,7 +203,7 @@ Qed.
 Lemma rename_locval s x v :
   rename s (x ::= v) = x ::= rename s v.
 Proof.
-rewrite /locval -!lock renamebE names_rename renamefsE; congr mask.
+rewrite /locval renamebE names_rename renamefsE; congr mask.
 by rewrite renamepE /= renamem_set renameT !renamem_empty.
 Qed.
 
@@ -551,7 +551,8 @@ Lemma rename_bound_alloc x e : equivariant (bound_alloc x e).
 Proof.
 move=> pm /= s; rewrite /bound_alloc -rename_bound_eval_nat.
 case: bound_eval_nat=> [n|] //=.
-rewrite renameoE /= rename_stateu renameT; congr Some; congr stateu.
+rewrite renameoE /= rename_stateu renameT.
+rewrite [_ _ (newblock x n)](_ : _ = newblock x n) //.
 by apply/names0P/eqP/names_newblock.
 Qed.
 
@@ -843,7 +844,7 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - rewrite /bound_alloc /bound_eval_nat -lock /=.
   rewrite -hide_mapb; last exact: rename_eval_nat.
   rewrite hideT; case: (expose _)=> //= sz.
-  rewrite /stateu -lock /= hide_mapb2r //=.
+  rewrite /stateu /= hide_mapb2r //=.
     by move=> s' [[ls1 h1] [ls2 h2]]; rewrite !renamepE /= !renamem_union.
   by rewrite names_newblock in_fset0.
 - rewrite /bound_free -lock /= -hide_mapb; last exact: rename_free.
