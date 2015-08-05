@@ -270,15 +270,17 @@ rewrite eval_exprbE bound_eval_condE /= => ev.
 by case: ifP=> _ // [->].
 Qed.
 
-Definition setl (s : state) x v :=
-  locked mapb_fs _ _ (names v) (fun s => (setm s.1 x v, s.2)) s.
+Lemma setl_key : unit. Proof. exact: tt. Qed.
+Definition setl_def (s : state) x v :=
+  mapb_fs (names v) (fun s => (setm s.1 x v, s.2)) s.
+Definition setl := locked_with setl_key setl_def.
 
 Lemma setlE A s x v :
   fsubset (names v) A ->
   fsubset A (names s) ->
   setl (mask A s) x v = mask A (setm s.1 x v, s.2).
 Proof.
-move=> sub1 sub2; rewrite /setl -lock /= mapb_fsE //.
+move=> sub1 sub2; rewrite [setl]unlock /setl_def mapb_fsE //.
 - by congr mask; apply/eqP.
 - move=> pm /= dis [ls h] /=.
   rewrite renamepE /=; congr pair.
@@ -298,7 +300,7 @@ have P:
     by case: eqP=> // _ [<-].
   move=> n_in_v'; apply/fsetUP; right; apply/namesfsP; exists v''=> //.
   by apply/codommP; exists x; rewrite setmE eqxx.
-rewrite /setl /locval -!lock /= mapb_fsE /=.
+rewrite [setl]unlock /setl_def /locval /= mapb_fsE /=.
 - rewrite [X in (X, _)](_ : _ = setm emptym x v'); last first.
     by apply/eq_partmap=> x'; rewrite !setmE; case: eqP.
   rewrite maskE P; congr mask; apply/eqP; rewrite eqEfsubset fsubsetIr /=.
@@ -314,14 +316,14 @@ Lemma triple_assn s x e v :
 Proof.
 move=> /= ev; exists 1=> /=; congr Done.
 case: s / boundP ev => [/= A [ls h] sub].
-rewrite eval_exprbE; case: ifP=> // sub' [ev].
+rewrite eval_exprbE; case: ifP => // sub' [ev].
 move: sub'; rewrite bound_assnE /= ev => sub'.
 by rewrite setlE //.
 Qed.
 
 Definition loadb (s : state) (ptr : name * int) :=
-  odflt None (oexpose (locked mapb_fs _ _ (names ptr)
-                              (fun s : locals * heap => s.2 ptr) s)).
+  odflt None (oexpose (mapb_fs (names ptr)
+                               (fun s : locals * heap => s.2 ptr) s)).
 
 Lemma loadbE A s ptr :
   fsubset (names ptr) A ->
@@ -331,7 +333,7 @@ Lemma loadbE A s ptr :
     s.2 ptr
   else None.
 Proof.
-move=> sub1 sub2; rewrite /loadb -lock mapb_fsE.
+move=> sub1 sub2; rewrite /loadb mapb_fsE.
 - move: (sub1); rewrite {1}/fsubset; move/eqP=> ->.
   by rewrite oexposeE; case: ifP.
 - move=> pm /= dis [ls h] /=.
@@ -346,7 +348,7 @@ Lemma loadbp i i' vs n :
     else None
   else None.
 Proof.
-rewrite /loadb /blockat -!lock /= {1}/names /= /prod_names /= namesT fsetU0.
+rewrite /loadb [blockat]unlock /= {1}/names /= /prod_names /= namesT fsetU0.
 rewrite namesnE mapb_fsE /=.
 - rewrite oexposeE mkpartmapfE.
   case: eqP=> [->{i'}|ne].

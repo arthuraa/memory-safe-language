@@ -22,6 +22,7 @@ Implicit Types (ls : locals) (h : heap).
 
 Definition state := {bound locals * heap}.
 
+(* FIXME: Lock stateu? The next basic proofs are pretty slow. *)
 Definition stateu : state -> state -> state :=
   mapb2 (fun s1 s2 => (unionm s1.1 s2.1, unionm s1.2 s2.2)).
 
@@ -207,20 +208,22 @@ rewrite /locval renamebE names_rename renamefsE; congr mask.
 by rewrite renamepE /= renamem_set renameT !renamem_empty.
 Qed.
 
-Definition blockat (i : name) (vs : seq value) : state :=
-  locked (mask (i |: names vs)
-               (emptym, mkpartmapf (fun p => nth VNil vs (absz p.2))
-                                   [seq (i, Posz n) | n <- iota 0 (size vs)])).
+Lemma blockat_key : unit. Proof. exact: tt. Qed.
+Definition blockat_def (i : name) (vs : seq value) : state :=
+  mask (i |: names vs)
+       (emptym, mkpartmapf (fun p => nth VNil vs (absz p.2))
+                           [seq (i, Posz n) | n <- iota 0 (size vs)]).
+Definition blockat := locked_with blockat_key blockat_def.
 
 Notation "i :-> vs" := (blockat i vs) (at level 20) : state_scope.
 
 Lemma vars_s_blockat i vs : vars_s (i :-> vs) = fset0.
-Proof. by rewrite /blockat -lock vars_sE domm0. Qed.
+Proof. by rewrite [blockat]unlock vars_sE domm0. Qed.
 
 Lemma pub_blockat i vs :
   pub (i :-> vs) = if vs is [::] then fset0 else fset1 i.
 Proof.
-rewrite /blockat -lock /= pubE.
+rewrite [blockat]unlock /= pubE.
 rewrite (_ : names (domm _) = if vs is [::] then fset0 else fset1 i).
   case: vs=> [|v vs] /=; first by rewrite fsetI0.
   apply/eqP; rewrite eqEfsubset fsubsetIr /= fsubsetI fsubsetxx andbT.
@@ -237,9 +240,9 @@ Lemma names_blockat i vs :
   names (i :-> vs) =
   if nilp vs then fset0 else i |: names vs.
 Proof.
-rewrite /blockat -lock; case: ifPn=> [/nilP -> /=|vs0n].
-  rewrite maskE fsetIUr /= !namesm_empty !fsetI0 fsetU0 namesbE //.
-  exact: fsub0set.
+rewrite [blockat]unlock /=; case: ifPn=> [/nilP -> /=|vs0n].
+  rewrite /blockat_def maskE fsetIUr /= !namesm_empty !fsetI0 fsetU0.
+  by rewrite namesbE // fsub0set.
 rewrite namesbE //; apply/fsubsetU/orP; right=> /=.
 apply/fsubsetP=> i' /fsetU1P [{i'}->|].
   rewrite namesmE; apply/fsetUP; left; apply/namesfsP.
@@ -259,7 +262,7 @@ Qed.
 Lemma rename_blockat s i vs :
   rename s (i :-> vs) = s i :-> rename s vs.
 Proof.
-rewrite /blockat -!lock renamebE renamefsE imfsetU1 names_rename.
+rewrite [blockat]unlock /blockat_def renamebE renamefsE imfsetU1 names_rename.
 congr mask; rewrite renamepE /= renamem_empty; congr pair.
 rewrite renamem_mkpartmapf; apply/eq_partmap=> /= - [i' p].
 rewrite !mkpartmapfE renamesE -map_comp /= renameT renames_nth.
