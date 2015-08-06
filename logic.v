@@ -120,6 +120,10 @@ case: (ls3 x)=> [v3|] //= _ /(_ erefl).
 by case: (ls2 x)=> [v2|] //= <- /(_ erefl) ->; rewrite renameK.
 Qed.
 
+Lemma approx_vars s1 s2 :
+  approx s1 s2 -> fsubset (vars_s s2) (vars_s s1).
+Proof. admit. Qed.
+
 (** Specify whether the result of executing some program is compatible
 with its expected output given a set of allowed effects [ef]. *)
 
@@ -217,21 +221,40 @@ case ev1: eval_com=> [s2'| |] //= P2.
 by apply: t2=> //; apply: (leq_trans (leq_maxr _ _) ln).
 Qed.
 
-Lemma triple_frame e s1 c s1' s2 :
+Lemma triple_frame ef s1 c s1' s2 :
   fsubset (vars_c c) (vars_s s1) ->
-  (if Err ⊑ e then fdisjoint (names s1) (pub s2)
+  (if Err ⊑ ef then fdisjoint (names s1) (pub s2)
    else fdisjoint (pub s1) (pub s2)) ->
-  triple e s1 c s1' ->
-  triple e (s1 * s2) c (s1' * s2).
+  triple ef s1 c s1' ->
+  triple ef (s1 * s2) c (s1' * s2).
 Proof.
-move=> sub dis.
-have dis': fdisjoint (pub s1) (pub s2).
+move=> sub dis [n0 t]; exists n0=> n s ln P12.
+have {dis P12} [s1'' [s2' [es ap1 ap2 dis]]] :
+  exists s1'' s2',
+    [/\ s = s1'' * s2',
+        approx s1'' s1,
+        approx s2'  s2 &
+        if Err ⊑ ef
+        then fdisjoint (names s1'') (pub s2')
+        else fdisjoint (pub s1'') (pub s2') ].
+  case: s1 s2 / bound2P P12 dis {sub n t ln}
+         => [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+  rewrite namesbE // !pubE stateuE //.
+  case/approxP=> [/= A ls A' ls' h -> {s} e sub sub' sub'' Pls dis].
+  exists (mask (A :&: A1) (filterm (fun p _ => p \in domm ls) ls, h1)).
+  exists (mask (A :&: A2) (filterm (fun p _ => p \notin domm ls) ls, h2)).
+  admit.
+have {sub} sub := fsubset_trans sub (approx_vars ap1).
+have dis': fdisjoint (pub s1'') (pub s2').
   case: ifP dis=> // _ dis.
-  by apply: (fdisjoint_trans (pub_names s1)).
-apply: elim_triple=> [n ev|n err ev|n ev].
-- by rewrite (frame_loop sub dis' ev).
-- by rewrite err in dis; rewrite (frame_error sub dis ev).
-by rewrite (frame_ok sub dis' ev).
+  by apply: (fdisjoint_trans (pub_names s1'')).
+rewrite {}es {s}.
+move/(_ _ _ ln ap1): t.
+case ev: eval_com=> [s1'''| |] //= t.
+- rewrite (frame_ok sub dis' ev) /=.
+  admit.
+- by rewrite t in dis; rewrite (frame_error sub dis ev).
+by rewrite (frame_loop sub dis' ev).
 Qed.
 
 Lemma triple_restriction e A s c s' :
