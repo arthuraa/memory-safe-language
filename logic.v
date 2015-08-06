@@ -20,15 +20,26 @@ Section Logic.
 Local Open Scope fset_scope.
 Local Open Scope state_scope.
 
+Implicit Types (s : state) (A : {fset name}) (ls : locals) (h : heap).
+
+(** Program specifcations are indexed by an element of [effect], which
+tells what can happen during the execution of a program. As defined in
+detail later, [Total] gives a total correctness result; [Loop] says
+that the program can enter an infinite loop; [Err] says that an error
+can occur during execution, but that the program will necessarily
+terminate; and [LoopErr] combines [Loop] and [Err]. *)
+
 Inductive effect :=
-| No
+| Total
 | Loop
 | Err
 | LoopErr.
 
-Definition effect_eq e e' :=
-  match e, e' with
-  | No, No | Loop, Loop | Err, Err | LoopErr, LoopErr => true
+Implicit Type ef : effect.
+
+Definition effect_eq ef ef' :=
+  match ef, ef' with
+  | Total, Total | Loop, Loop | Err, Err | LoopErr, LoopErr => true
   | _, _ => false
   end.
 
@@ -38,32 +49,113 @@ Proof. by case=> [] [] /=; constructor. Qed.
 Definition effect_eqMixin := EqMixin effect_eqP.
 Canonical effect_eqType := Eval hnf in EqType effect effect_eqMixin.
 
-Definition effect_leq e e' :=
-  match e, e' with
-  | No, _
+Definition effect_leq ef ef' :=
+  match ef, ef' with
+  | Total, _
   | Loop, Loop
   | Err, Err
   | _, LoopErr => true
   | _, _ => false
   end.
 
-Notation "x ⊑ y" := (effect_leq x y) (at level 70, no associativity).
+Notation "ef ⊑ ef'" := (effect_leq ef ef') (at level 70, no associativity).
+Notation "ef ⊏ ef'" :=
+  ((ef != ef') && (ef ⊑ ef')) (at level 70, no associativity).
 
-Definition triple e s c s' :=
-  nosimpl match e with
-  | No =>
-    exists n, eval_com bound_sem s c n = Done s'
+(** Represent predicates with states. We say that [approx s1 s2] when
+[s2] can be obtained from [s1] by restricting names and removing local
+bindings. State approximation yields a convenient language for writing
+program specifications. *)
 
-  | Loop =>
-    forall n, eval_com bound_sem s c n \in [:: NotYet; Done s']
+CoInductive approx s1 s2 : Prop :=
+| Approx A1 ls1 A2 ls2 h
+  of s1 = mask A1 (ls1, h)
+  &  s2 = mask A2 (ls2, h)
+  &  fsubset A2 A1
+  &  (forall x, ls2 x -> ls1 x = ls2 x).
 
-  | Err =>
-    exists n, eval_com bound_sem s c n \in [:: Error; Done s']
+(** Alternate formulation that provides additional useful hypotheses. *)
+CoInductive approx_sub s1 s2 : Prop :=
+| ApproxSub A1 ls1 A2 ls2 h
+  of s1 = mask A1 (ls1, h)
+  &  s2 = mask A2 (ls2, h)
+  &  fsubset A1 (names (ls1, h))
+  &  fsubset A2 (names (ls2, h))
+  &  fsubset A2 A1
+  &  (forall x, ls2 x -> ls1 x = ls2 x).
 
-  | LoopErr =>
-    forall n, eval_com bound_sem s c n \in [:: NotYet; Error; Done s']
+Lemma approxP s1 s2 : approx s1 s2 <-> approx_sub s1 s2.
+Proof.
+split; case; last by move=> *; econstructor; eauto.
+move=> /= A1 ls1 A2 ls2 h -> -> sub12 Pls.
+have sub12': fsubset (names (ls2, h)) (names (ls1, h)).
+  apply/fsubsetP=> i /fsetUP /= [in_ls|in_h]; apply/fsetUP=> /=; last by auto.
+  left; case/namesmP: in_ls=> [???|x v Pget in_v]; first by rewrite namesT.
+  apply/fsetUP; right; apply/namesfsP; exists v=> //.
+  by apply/codommP; exists x; rewrite -Pget; apply: Pls; rewrite Pget.
+move: {sub12 sub12'} (fsetISS sub12 sub12').
+by rewrite maskE (maskE A2)=> sub12; econstructor; eauto; try apply: fsubsetIr.
+Qed.
 
+Lemma approxss s : approx s s.
+Proof.
+case: s / boundP=> [/= A [ls h] sub]; econstructor=> //.
+exact: fsubsetxx.
+Qed.
+
+Lemma approx_trans s2 s1 s3 : approx s1 s2 -> approx s2 s3 -> approx s1 s3.
+Proof.
+case/approxP=> [/= A1 ls1 A2 ls2 h -> -> sub1 sub2 sub12 Pls12 {s1 s2}].
+case/approxP=> [/= A2' ls2' A3 ls3 h' e2 -> sub2'].
+have {sub2'} eA2: A2' = A2 by rewrite -(namesbE sub2) e2 namesbE.
+rewrite {}eA2 {A2'} in e2 *.
+case/maskP: e2=> // pm dis [<- <-] {ls2' h'} sub3 sub23 Pls23.
+have ->: mask A3 (ls3, rename pm h) = mask A3 (rename pm^-1%fperm ls3, h).
+  apply/maskP=> //; exists pm^-1%fperm.
+    by rewrite supp_inv fdisjointC (fdisjoint_trans sub23) // fdisjointC.
+  by rewrite renamepE /= renameK.
+econstructor; eauto; first exact: (fsubset_trans sub23).
+move=> /= x Pls3; move: Pls3 (Pls23 x) (Pls12 x); rewrite !renamemE !renameT.
+case: (ls3 x)=> [v3|] //= _ /(_ erefl).
+by case: (ls2 x)=> [v2|] //= <- /(_ erefl) ->; rewrite renameK.
+Qed.
+
+(** Specify whether the result of executing some program is compatible
+with its expected output given a set of allowed effects [ef]. *)
+
+Definition compat ef r s :=
+  match r with
+  | Done s' => approx s' s
+  | Error => Err ⊑ ef
+  | NotYet => Loop ⊑ ef
   end.
+
+Lemma compat_leq ef ef' r s :
+  ef ⊑ ef' ->
+  compat ef r s ->
+  compat ef' r s.
+Proof. by case: r ef ef' => [s'| |] [] []. Qed.
+
+(** Definition of triples proper. [triple ef s1 c s2] states that
+running [c] on [s1] will yield results that are compatible with the
+effects in [ef], provided that we allow the program to run for at
+least a minimum number of [n0] steps. *)
+
+Definition triple ef s1 c s2 :=
+  forall s1',
+    approx s1' s1 ->
+    exists n0,
+      forall n,
+        n0 <= n -> compat ef (eval_com bound_sem s1' c n) s2.
+
+Lemma triple_leq ef ef' s1 c s2 :
+  ef ⊑ ef' ->
+  triple ef s1 c s2 ->
+  triple ef' s1 c s2.
+Proof.
+move=> /compat_leq Pef spec s1' /spec [n0 Pn0].
+by exists n0=> n /Pn0; apply: Pef.
+Qed.
 
 Lemma elim_triple_strong e s1 c1 s1' s2 c2 s2' :
   (forall n,  eval_com bound_sem s1 c1 n = NotYet ->
@@ -143,7 +235,7 @@ Qed.
 
 Lemma triple_skip e s : triple e s Skip s.
 Proof.
-apply: (triple_sub (erefl : No ⊑ e)).
+apply: (triple_sub (erefl : Total ⊑ e)).
 by exists 1=> /=.
 Qed.
 
@@ -303,7 +395,7 @@ Qed.
 
 Lemma triple_assn s x e v :
   eval_exprb e s = Some v ->
-  triple No s (Assn x e) (setl s x v).
+  triple Total s (Assn x e) (setl s x v).
 Proof.
 move=> /= ev; exists 1=> /=; congr Done.
 case: s / boundP ev => [/= A [ls h] sub].
@@ -383,7 +475,7 @@ Qed.
 Lemma triple_load s x e ptr v :
   eval_exprb e s = Some (VPtr ptr) ->
   loadb s ptr = Some v ->
-  triple No s (Load x e) (setl s x v).
+  triple Total s (Load x e) (setl s x v).
 Proof.
 move=> /= ev_ex get; exists 1=> /=.
 case: s / boundP ev_ex get => [/= A [ls h] sub].
@@ -427,7 +519,7 @@ Lemma triple_store s e e' ptr v s' :
   eval_exprb e s = Some (VPtr ptr) ->
   eval_exprb e' s = Some v ->
   storeb s ptr v = Some s' ->
-  triple No s (Store e e') s'.
+  triple Total s (Store e e') s'.
 Proof.
 case: s / boundP=> [/= A [ls h] sub] ev_e ev_e' st.
 exists 1=> /=; rewrite bound_storeE /=.
@@ -741,7 +833,7 @@ Lemma setlU s1 s2 x v :
 Proof. admit. Qed.
 
 Lemma listrev_spec vs :
-  triple No
+  triple Total
          (ll "x" vs * "r" ::= VNil * "y" ::= VNil)
          listrev
          ("x" ::= VNil * ll "r" (rev vs) * "y" ::= VNil).
@@ -758,7 +850,7 @@ elim: vs [::] => [|v vs IH] vs'.
   exact: eval_exprb_nil.
 rewrite rev_cons cat_rcons -stateuA; apply: triple_while.
 rewrite eval_exprb_neg ll1_nil /=.
-apply: (triple_seq _ (IH _)).
+apply: (triple_seq _ (IH _))=> {IH}.
 rewrite [ll _ vs * _]stateuC; first last.
 - rewrite pub_ll fdisjoint0 //.
 - by rewrite !vars_ll; apply/fdisjointP=> x /fset1P ->; rewrite in_fset1.
@@ -772,13 +864,7 @@ rewrite names_locval fsetU0 names_stateu; first last.
   by apply/fdisjointP=> ? /fset1P ->; rewrite in_fset1.
 rewrite names_ll names_locval fsetU0.
 rewrite -![_ :|: names vs' :|: _]fsetUA [names vs' :|: _]fsetUC fsetUA.
-rewrite newC; last first.
-  move=> pm; rewrite !fdisjointUr -andbA => /and3P [disv disvs disvs'] /=.
-  move=> [i i'] /=.
-  rewrite !rename_stateu !rename_locval rename_blockat rename_lb.
-  rewrite [_ _ (ll _ vs')]names_disjointE ?names_ll //.
-  rewrite [rename _ [:: _; _]]/rename /= [rename pm v]names_disjointE //.
-  by rewrite rename_lh [rename _ vs]names_disjointE //.
+rewrite [ll]unlock /ll_def.
 apply: triple_restriction=> i; rewrite !in_fsetU !negb_or -andbA.
 case/and3P=> [i_v i_vs i_vs'].
 apply: triple_restriction=> i'; rewrite in_fsetU1 !in_fsetU !negb_or -andbA.
@@ -795,6 +881,13 @@ apply: (triple_seq (@triple_load _ _ _ (i', Posz 1) (lh i vs) _ _)).
 rewrite stateuA setlU !vars_s_stateu vars_s_locval !in_fsetU in_fset1 /=.
 rewrite vars_s_blockat vars_lb vars_ll in_fset1 /=.
 rewrite setlx.
+rewrite newC; last first.
+  move=> pm; rewrite !fdisjointUr -andbA => /and3P [disv disvs disvs'] /=.
+  move=> [i i'] /=.
+  rewrite !rename_stateu !rename_locval rename_blockat rename_lb.
+  rewrite [_ _ (ll _ vs')]names_disjointE ?names_ll //.
+  rewrite [rename _ [:: _; _]]/rename /= [rename pm v]names_disjointE //.
+  by rewrite rename_lh [rename _ vs]names_disjointE //.
 Qed.
 
 End Logic.
