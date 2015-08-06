@@ -50,7 +50,7 @@ Definition effect_eqMixin := EqMixin effect_eqP.
 Canonical effect_eqType := Eval hnf in EqType effect effect_eqMixin.
 
 Definition effect_leq ef ef' :=
-  match ef, ef' with
+  nosimpl match ef, ef' with
   | Total, _
   | Loop, Loop
   | Err, Err
@@ -142,22 +142,17 @@ effects in [ef], provided that we allow the program to run for at
 least a minimum number of [n0] steps. *)
 
 Definition triple ef s1 c s2 :=
-  forall s1',
-    approx s1' s1 ->
-    exists n0,
-      forall n,
-        n0 <= n -> compat ef (eval_com bound_sem s1' c n) s2.
+  exists n0, forall n s1',
+    n0 <= n -> approx s1' s1 ->
+    compat ef (eval_com bound_sem s1' c n) s2.
 
 Lemma triple_leq ef ef' s1 c s2 :
   ef ⊑ ef' ->
   triple ef s1 c s2 ->
   triple ef' s1 c s2.
-Proof.
-move=> /compat_leq Pef spec s1' /spec [n0 Pn0].
-by exists n0=> n /Pn0; apply: Pef.
-Qed.
+Proof. by move=> /compat_leq Pef [n0 Pn0]; exists n0=> ????; eauto. Qed.
 
-Lemma elim_triple_strong e s1 c1 s1' s2 c2 s2' :
+(*Lemma elim_triple_strong e s1 c1 s1' s2 c2 s2' :
   (forall n,  eval_com bound_sem s1 c1 n = NotYet ->
    exists2 n', n <= n' & eval_com bound_sem s2 c2 n' = NotYet) ->
   (forall n, Err ⊑ e -> eval_com bound_sem s1 c1 n = Error ->
@@ -203,64 +198,23 @@ Proof.
 move=> ev_loop ev_error ev_ok.
 by apply: elim_triple_strong=> [n ev|n err ev|n ev]; exists n=> //; eauto.
 Qed.
+*)
 
-Lemma triple_sub e e' s c s' :
-  e ⊑ e' ->
-  triple e s c s' ->
-  triple e' s c s'.
+Lemma triple_skip ef s : triple ef s Skip s.
 Proof.
-case: e e'=> [] [] //= _.
-- case=> [n en] n'.
-  move: (eval_com_leq bound_sem s c (leq_maxr n n')).
-  move: (eval_com_leq bound_sem s c (leq_maxl n n')).
-  rewrite en /refine_result
-    => /orP [/eqP en' | /eqP en'] /orP [/eqP ->|/eqP en''] //.
-  by rewrite en' !inE en'' eqxx orbT.
-- case=> [n en]; exists n; by rewrite en !inE eqxx orbT.
-- case=> [n en] n'.
-  move: (eval_com_leq bound_sem s c (leq_maxr n n')).
-  move: (eval_com_leq bound_sem s c (leq_maxl n n')).
-  rewrite en /refine_result
-    => /orP [/eqP en' | /eqP en'] /orP [/eqP ->|/eqP en''] //.
-  by rewrite en'' -en' !inE eqxx orbT.
-- move=> P n; move/(_ n): P; rewrite !inE orbA [_ || _ as X in X || _]orbC.
-  by rewrite -orbA=> ->; rewrite orbT.
-case=> [n n_term] n'.
-move: (eval_com_leq bound_sem s c (leq_maxr n n')).
-move: n_term (eval_com_leq bound_sem s c (leq_maxl n n')).
-by rewrite 2!inE=> /orP [/eqP en|/eqP en];
-rewrite en /refine_result /= => /eqP <- /orP [/eqP ->| /eqP ->];
-rewrite !inE /=.
+apply: (triple_leq (erefl : Total ⊑ ef)).
+by exists 1=> - [|n].
 Qed.
 
-Lemma triple_skip e s : triple e s Skip s.
+Lemma triple_seq ef s1 c1 s2 c2 s3 :
+  triple ef s1 c1 s2 ->
+  triple ef s2 c2 s3 ->
+  triple ef s1 (Seq c1 c2) s3.
 Proof.
-apply: (triple_sub (erefl : Total ⊑ e)).
-by exists 1=> /=.
-Qed.
-
-Lemma triple_seq e s c1 s' c2 s'' :
-  triple e s c1 s' ->
-  triple e s' c2 s'' ->
-  triple e s (Seq c1 c2) s''.
-Proof.
-case: e=> /=.
-- move=> [n1 e1] [n2 e2].
-  exists (maxn n1 n2).+1=> /=.
-  move: (eval_com_leq bound_sem s c1 (leq_maxl n1 n2)).
-  rewrite e1 /refine_result /= => /eqP <-.
-  move: (eval_com_leq bound_sem s' c2 (leq_maxr n1 n2)).
-  by rewrite e2 /refine_result /= => /eqP <-.
-- move=> P1 P2 [|n] //=; move/(_ n): P1.
-  by rewrite 2!inE=> /orP [] /eqP ->.
-- case=> [n1 n1_term] [n2 n2_term] /=; exists (maxn n1 n2).+1; rewrite /=.
-  move: n2_term (eval_com_leq bound_sem s' c2 (leq_maxr n1 n2)).
-  move: n1_term (eval_com_leq bound_sem s c1 (leq_maxl n1 n2)).
-  rewrite /refine_result !inE /= => /orP [] /eqP -> /= /eqP <- //=.
-  by case/orP=> [] /eqP -> /= /eqP <- /=.
-move=> P1 P2 [|n] //=.
-move/(_ n): P1; rewrite !inE => /or3P [] /eqP -> //=.
-by move/(_ n): P2; rewrite !inE.
+move=> [n1 t1] [n2 t2]; exists (maxn n1 n2).+1=> - [|n] //= s1'; rewrite ltnS.
+move=> ln Ps1; move: (t1 _ _ (leq_trans (leq_maxl _ _) ln) Ps1).
+case ev1: eval_com=> [s2'| |] //= P2.
+by apply: t2=> //; apply: (leq_trans (leq_maxr _ _) ln).
 Qed.
 
 Lemma triple_frame e s1 c s1' s2 :
