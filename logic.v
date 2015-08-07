@@ -64,8 +64,9 @@ Notation "ef ⊏ ef'" :=
 
 (** Represent predicates with states. We say that [approx s1 s2] when
 [s2] can be obtained from [s1] by restricting names and removing local
-bindings. State approximation yields a convenient language for writing
-program specifications. *)
+bindings. NB: Making it possible to "open" local names in
+specifications seems to require some work to be compatible with the
+frame rule, so we are not adopting this for now. *)
 
 CoInductive approx s1 s2 : Prop :=
 | Approx A1 ls1 A2 ls2 h
@@ -133,10 +134,29 @@ with its expected output given a set of allowed effects [ef]. *)
 
 Definition compat ef r s :=
   match r with
-  | Done s' => approx s' s
+  | Done s' => s' == s
   | Error => Err ⊑ ef
   | NotYet => Loop ⊑ ef
   end.
+
+Lemma compatE ef r s :
+  compat ef r s =
+  [|| r == Done s, (r == Error) && (Err ⊑ ef) | (r == NotYet) && (Loop ⊑ ef)].
+Proof. by case: r => [s'| |] //=; rewrite orbF. Qed.
+
+CoInductive compat_spec ef r s : Prop :=
+| CompatDone of r = Done s
+| CompatErr  of r = Error & Err ⊑ ef
+| CompatLoop of r = NotYet & Loop ⊑ ef.
+
+Lemma compatP ef r s :
+  reflect (compat_spec ef r s) (compat ef r s).
+Proof.
+rewrite compatE; apply/(iffP or3P).
+- move=> [/eqP ->|/andP [/eqP -> ?]|/andP [/eqP -> ?]];
+  econstructor (solve [eauto]).
+move=> [->|[-> ?]|[-> ?]]; econstructor (solve [eauto]).
+Qed.
 
 Lemma compat_leq ef ef' r s :
   ef ⊑ ef' ->
@@ -150,20 +170,19 @@ effects in [ef], provided that we allow the program to run for at
 least a minimum number of [n0] steps. *)
 
 Definition triple ef s1 c s2 :=
-  exists n0, forall n s1',
-    n0 <= n -> approx s1' s1 ->
-    compat ef (eval_com bound_sem s1' c n) s2.
+  exists n0, forall n, n0 <= n ->
+    compat ef (eval_com bound_sem s1 c n) s2.
 
 Lemma triple_leq ef ef' s1 c s2 :
   ef ⊑ ef' ->
   triple ef s1 c s2 ->
   triple ef' s1 c s2.
-Proof. by move=> /compat_leq Pef [n0 Pn0]; exists n0=> ????; eauto. Qed.
+Proof. by move=> /compat_leq Pef [n0 Pn0]; exists n0=> ??; eauto. Qed.
 
 Lemma triple_skip ef s : triple ef s Skip s.
 Proof.
 apply: (triple_leq (erefl : Total ⊑ ef)).
-by exists 1=> - [|n].
+by exists 1=> - [|n] //=.
 Qed.
 
 Lemma triple_seq ef s1 c1 s2 c2 s3 :
@@ -171,9 +190,9 @@ Lemma triple_seq ef s1 c1 s2 c2 s3 :
   triple ef s2 c2 s3 ->
   triple ef s1 (Seq c1 c2) s3.
 Proof.
-move=> [n1 t1] [n2 t2]; exists (maxn n1 n2).+1=> - [|n] //= s1'; rewrite ltnS.
-move=> ln Ps1; move: (t1 _ _ (leq_trans (leq_maxl _ _) ln) Ps1).
-case ev1: eval_com=> [s2'| |] //= P2.
+move=> [n1 t1] [n2 t2]; exists (maxn n1 n2).+1=> - [|n] //=; rewrite ltnS.
+move=> ln; move: (t1 _ (leq_trans (leq_maxl _ _) ln)).
+case ev1: eval_com=> [s2'| |] //= /eqP ->.
 by apply: t2=> //; apply: (leq_trans (leq_maxr _ _) ln).
 Qed.
 
@@ -184,50 +203,29 @@ Lemma triple_frame ef s1 c s1' s2 :
   triple ef s1 c s1' ->
   triple ef (s1 * s2) c (s1' * s2).
 Proof.
-move=> sub dis [n0 t]; exists n0=> n s ln P12.
-have {dis P12} [s1'' [s2' [es ap1 ap2 dis]]] :
-  exists s1'' s2',
-    [/\ s = s1'' * s2',
-        approx s1'' s1,
-        approx s2'  s2 &
-        if Err ⊑ ef
-        then fdisjoint (names s1'') (pub s2')
-        else fdisjoint (pub s1'') (pub s2') ].
-  case: s1 s2 / bound2P P12 dis {sub n t ln}
-         => [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
-  rewrite namesbE // !pubE stateuE //.
-  case/approxP=> [/= A ls A' ls' h -> {s} e sub sub' sub'' Pls dis].
-  exists (mask (A :&: A1) (filterm (fun p _ => p \in domm ls) ls, h1)).
-  exists (mask (A :&: A2) (filterm (fun p _ => p \notin domm ls) ls, h2)).
-  admit.
-have {sub} sub := fsubset_trans sub (approx_vars ap1).
-have dis': fdisjoint (pub s1'') (pub s2').
+move=> sub dis [n0 t]; exists n0=> n ln.
+have dis': fdisjoint (pub s1) (pub s2).
   case: ifP dis=> // _ dis.
-  by apply: (fdisjoint_trans (pub_names s1'')).
-rewrite {}es {s}.
-move/(_ _ _ ln ap1): t.
-case ev: eval_com=> [s1'''| |] //= t.
-- rewrite (frame_ok sub dis' ev) /=.
-  admit.
-- by rewrite t in dis; rewrite (frame_error sub dis ev).
+  by apply: (fdisjoint_trans (pub_names s1)).
+case/(_ _ ln)/compatP: t => [] ev.
+- by rewrite (frame_ok sub dis' ev) /=.
+- by move=> t; rewrite t in dis; rewrite (frame_error sub dis ev).
 by rewrite (frame_loop sub dis' ev).
 Qed.
 
-Lemma triple_restriction e A s c s' :
-  (forall n, n \notin A -> triple e (s n) c (s' n)) ->
-  triple e (new A s) c (new A s').
+Lemma triple_restriction e A f c f' :
+  (forall n, n \notin A -> triple e (f n) c (f' n)) ->
+  triple e (new A f) c (new A f').
 Proof.
-move=> /(_ _ (freshP A)); apply: elim_triple=> [k ev|k _ ev|k ev].
-- apply/restriction_loop.
-  by rewrite // -renaming ev.
-- apply/restriction_error.
-  by rewrite // -renaming ev.
-apply/restriction_ok.
-by rewrite // [in RHS]R // -renaming ev.
+move=> /(_ _ (freshP A)) [n0 t]; exists n0.
+move=> n /t/compatP [] ev.
+- by rewrite (restriction_ok ev) /=.
+- by rewrite (restriction_error ev) /=.
+by rewrite (restriction_loop ev) /=.
 Qed.
 
 Definition eval_exprb e (s : state) : option value :=
-  oexpose (mapb (fun s => eval_expr true s.1 e) s).
+  oexpose (mapb (fun ps => eval_expr true ps.1 e) s).
 
 Lemma eval_exprbE e A ls h :
   eval_exprb e (mask A (ls, h))
@@ -247,19 +245,10 @@ Lemma triple_if e s ex ct ce s' :
   end ->
   triple e s (If ex ct ce) s'.
 Proof.
-case ev_ex: eval_exprb=> [[b| | |]|] //.
-apply: elim_triple_strong=> [k ev|k _ ev|k ev].
-- exists k.+1=> /=; first exact: leqnSn.
-  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
-  rewrite eval_exprbE bound_eval_condE /= => ev.
-  by case: ifP=> _ // [->].
-- exists k.+1=> /=.
-  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
-  rewrite eval_exprbE bound_eval_condE /= => ev.
-  by case: ifP=> _ // [->].
-exists k.+1=> /=.
-case: s / boundP ev ev_ex=> [/= A [ls h] sub].
-rewrite eval_exprbE bound_eval_condE /= => ev.
+case ev_ex: eval_exprb=> [[b| | |]|] // [n0 t].
+exists n0.+1=> - [|n] //; rewrite ltnS /= => /t {t}.
+case: s / boundP ev_ex=> [/= A [ls h] sub].
+rewrite eval_exprbE bound_eval_condE /=.
 by case: ifP=> _ // [->].
 Qed.
 
@@ -270,31 +259,22 @@ Lemma triple_while e s ex c s' :
   end ->
   triple e s (While ex c) s'.
 Proof.
-case ev_ex: eval_exprb=> [[b| | |]|] //.
-apply: elim_triple_strong=> [k ev|k _ ev|k ev].
-- exists k.+1=> /=; first exact: leqnSn.
-  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
-  rewrite eval_exprbE bound_eval_condE /= => ev.
-  by case: ifP=> _ // [->].
-- exists k.+1=> /=.
-  case: s / boundP ev ev_ex=> [/= A [ls h] sub].
-  rewrite eval_exprbE bound_eval_condE /= => ev.
-  by case: ifP=> _ // [->].
-exists k.+1=> /=.
-case: s / boundP ev ev_ex=> [/= A [ls h] sub].
-rewrite eval_exprbE bound_eval_condE /= => ev.
+case ev_ex: eval_exprb=> [[b| | |]|] // [n0 t].
+exists n0.+1=> - [|n] //; rewrite ltnS /= => /t {t}.
+case: s / boundP ev_ex=> [/= A [ls h] sub].
+rewrite eval_exprbE bound_eval_condE /=.
 by case: ifP=> _ // [->].
 Qed.
 
 Lemma setl_key : unit. Proof. exact: tt. Qed.
 Definition setl_def (s : state) x v :=
-  mapb_fs (names v) (fun s => (setm s.1 x v, s.2)) s.
+  mapb_fs (names v) (fun ps => (setm ps.1 x v, ps.2)) s.
 Definition setl := locked_with setl_key setl_def.
 
-Lemma setlE A s x v :
+Lemma setlE A ps x v :
   fsubset (names v) A ->
-  fsubset A (names s) ->
-  setl (mask A s) x v = mask A (setm s.1 x v, s.2).
+  fsubset A (names ps) ->
+  setl (mask A ps) x v = mask A (setm ps.1 x v, ps.2).
 Proof.
 move=> sub1 sub2; rewrite [setl]unlock /setl_def mapb_fsE //.
 - by congr mask; apply/eqP.
@@ -330,7 +310,7 @@ Lemma triple_assn s x e v :
   eval_exprb e s = Some v ->
   triple Total s (Assn x e) (setl s x v).
 Proof.
-move=> /= ev; exists 1=> /=; congr Done.
+move=> /= ev; exists 1=> - [|n] //= _.
 case: s / boundP ev => [/= A [ls h] sub].
 rewrite eval_exprbE; case: ifP => // sub' [ev].
 move: sub'; rewrite bound_assnE /= ev => sub'.
@@ -341,12 +321,12 @@ Definition loadb (s : state) (ptr : name * int) :=
   odflt None (oexpose (mapb_fs (names ptr)
                                (fun s : locals * heap => s.2 ptr) s)).
 
-Lemma loadbE A s ptr :
+Lemma loadbE A ps ptr :
   fsubset (names ptr) A ->
-  fsubset A (names s) ->
-  loadb (mask A s) ptr =
-  if fsubset (names (s.2 ptr)) A then
-    s.2 ptr
+  fsubset A (names ps) ->
+  loadb (mask A ps) ptr =
+  if fsubset (names (ps.2 ptr)) A then
+    ps.2 ptr
   else None.
 Proof.
 move=> sub1 sub2; rewrite /loadb mapb_fsE.
@@ -410,27 +390,27 @@ Lemma triple_load s x e ptr v :
   loadb s ptr = Some v ->
   triple Total s (Load x e) (setl s x v).
 Proof.
-move=> /= ev_ex get; exists 1=> /=.
+move=> /= ev_ex get; exists 1=> - [|n] //= _.
 case: s / boundP ev_ex get => [/= A [ls h] sub].
 rewrite eval_exprbE; case: ifP=> // sub' [ev].
 rewrite ev in sub'; rewrite loadbE //=.
 rewrite bound_loadE /= ev.
-case: ifP=> // sub'' get; rewrite get /=; congr Done.
+case: ifP=> // sub'' get; rewrite get /=.
 by rewrite get in sub''; rewrite setlE.
 Qed.
 
 Definition storeb (s : state) (ptr : name * int) v :=
   obound (locked mapb_fs _ _ (names ptr :|: names v)
-                 (fun s => omap (fun h => (s.1, h)) (updm s.2 ptr v)) s).
+                 (fun ps => omap (fun h => (ps.1, h)) (updm ps.2 ptr v)) s).
 
-Lemma storebE A s ptr v :
+Lemma storebE A ps ptr v :
   fsubset (names ptr) A ->
   fsubset (names v) A ->
-  fsubset A (names s) ->
-  storeb (mask A s) ptr v =
-  omap (fun h => mask A (s.1, h)) (updm s.2 ptr v).
+  fsubset A (names ps) ->
+  storeb (mask A ps) ptr v =
+  omap (fun h => mask A (ps.1, h)) (updm ps.2 ptr v).
 Proof.
-move: s ptr v => [/= ls h] ptr v sub1 sub2 sub3.
+move: ps ptr v => [/= ls h] ptr v sub1 sub2 sub3.
 have sub4: fsubset (names ptr :|: names v) A by rewrite fsubUset sub1.
 rewrite /storeb -!lock /= mapb_fsE /= ?oboundE.
 - by move: sub4; rewrite {1}/fsubset => /eqP ->; case: updm.
@@ -455,7 +435,7 @@ Lemma triple_store s e e' ptr v s' :
   triple Total s (Store e e') s'.
 Proof.
 case: s / boundP=> [/= A [ls h] sub] ev_e ev_e' st.
-exists 1=> /=; rewrite bound_storeE /=.
+exists 1=> - [|n] //= _; rewrite bound_storeE /=.
 move: ev_e ev_e' st.
 rewrite eval_exprbE; case: ifP=> // sub' [e_ptr]; rewrite e_ptr in sub' *.
 rewrite eval_exprbE; case: ifP=> // sub'' [e_v]; rewrite e_v in sub'' *.
@@ -623,12 +603,12 @@ Coercion Binop : binop >-> Funclass.
 Coercion Var : string >-> expr.
 Coercion Num : int >-> expr.
 
-Lemma eval_exprb_new e A s :
-  (forall i, i \notin A -> i \notin names (eval_exprb e (s i))) ->
-  eval_exprb e (new A s) = eval_exprb e (s (fresh A)).
+Lemma eval_exprb_new e A f :
+  (forall i, i \notin A -> i \notin names (eval_exprb e (f i))) ->
+  eval_exprb e (new A f) = eval_exprb e (f (fresh A)).
 Proof.
 move=> fr; rewrite /new.
-move: (fresh _) (fr _ (freshP A))=> {A fr} i; move: (s i)=> {s} s.
+move: (fresh _) (fr _ (freshP A))=> {A fr} i; move: (f i)=> {f} s.
 case: s / (fboundP (fset1 i))=> [/= A [ls h] sub1 sub2].
 rewrite hideE !eval_exprbE; case: ifPn=> [sub fresh_i|sub _].
   rewrite ifT //.
