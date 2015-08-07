@@ -21,6 +21,7 @@ Local Open Scope fset_scope.
 Local Open Scope state_scope.
 
 Implicit Types (s : state) (A : {fset name}) (ls : locals) (h : heap).
+Implicit Types (e : expr) (c : com).
 
 (** Program specifcations are indexed by an element of [effect], which
 tells what can happen during the execution of a program. As defined in
@@ -213,9 +214,17 @@ case/(_ _ ln)/compatP: t => [] ev.
 by rewrite (frame_loop sub dis' ev).
 Qed.
 
-Lemma triple_restriction e A f c f' :
-  (forall n, n \notin A -> triple e (f n) c (f' n)) ->
-  triple e (new A f) c (new A f').
+Lemma triple_hiden ef A s c s' :
+  triple ef s c s' ->
+  triple ef (hiden A s) c (hiden A s').
+Proof.
+move=> [n0 t]; exists n0=> n /t/compatP.
+by rewrite eval_com_hiden => - [] -> /=.
+Qed.
+
+Lemma triple_restriction ef A f c f' :
+  (forall n, n \notin A -> triple ef (f n) c (f' n)) ->
+  triple ef (new A f) c (new A f').
 Proof.
 move=> /(_ _ (freshP A)) [n0 t]; exists n0.
 move=> n /t/compatP [] ev.
@@ -238,12 +247,12 @@ rewrite /eval_exprb mapbE /=; last first.
 by rewrite oexposeE.
 Qed.
 
-Lemma triple_if e s ex ct ce s' :
+Lemma triple_if ef s ex ct ce s' :
   match eval_exprb ex s with
-  | Some (VBool b) => triple e s (if b then ct else ce) s'
+  | Some (VBool b) => triple ef s (if b then ct else ce) s'
   | _ => False
   end ->
-  triple e s (If ex ct ce) s'.
+  triple ef s (If ex ct ce) s'.
 Proof.
 case ev_ex: eval_exprb=> [[b| | |]|] // [n0 t].
 exists n0.+1=> - [|n] //; rewrite ltnS /= => /t {t}.
@@ -252,12 +261,12 @@ rewrite eval_exprbE bound_eval_condE /=.
 by case: ifP=> _ // [->].
 Qed.
 
-Lemma triple_while e s ex c s' :
+Lemma triple_while ef s ex c s' :
   match eval_exprb ex s with
-  | Some (VBool b) => triple e s (if b then Seq c (While ex c) else Skip) s'
+  | Some (VBool b) => triple ef s (if b then Seq c (While ex c) else Skip) s'
   | _ => False
   end ->
-  triple e s (While ex c) s'.
+  triple ef s (While ex c) s'.
 Proof.
 case ev_ex: eval_exprb=> [[b| | |]|] // [n0 t].
 exists n0.+1=> - [|n] //; rewrite ltnS /= => /t {t}.

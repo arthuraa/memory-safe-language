@@ -838,56 +838,56 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
 by rewrite bound_eval_condE; case: eval_expr=> // - [] P; eauto.
 Qed.
 
-Lemma eval_com_hide n s c k :
-  eval_com bound_sem (hide n s) c k =
+Lemma eval_com_hiden A s c k :
+  eval_com bound_sem (hiden A s) c k =
   match eval_com bound_sem s c k with
-  | Done s' => Done (hide n s')
+  | Done s' => Done (hiden A s')
   | Error => Error
   | NotYet => NotYet
   end.
 Proof.
 elim: k s c => /= [|k IH] //= s.
 case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
-- rewrite /bound_assn hide_mapb //.
+- rewrite /bound_assn hiden_mapb //.
   exact: rename_assn.
-- rewrite /bound_load /= -hide_mapb; last exact: rename_load.
-  by rewrite obound_hide result_of_option_omap.
-- rewrite /bound_store /= -hide_mapb; last exact: rename_store.
-  by rewrite obound_hide result_of_option_omap.
+- rewrite /bound_load /= -hiden_mapb; last exact: rename_load.
+  by rewrite obound_hiden result_of_option_omap.
+- rewrite /bound_store /= -hiden_mapb; last exact: rename_store.
+  by rewrite obound_hiden result_of_option_omap.
 - rewrite /bound_alloc /bound_eval_nat -lock /=.
-  rewrite -hide_mapb; last exact: rename_eval_nat.
-  rewrite hideT; case: (expose _)=> //= sz.
-  rewrite [stateu]unlock /stateu_def /= hide_mapb2r //=.
+  rewrite -hiden_mapb; last exact: rename_eval_nat.
+  rewrite hidenT; case: (expose _)=> //= sz.
+  rewrite [stateu]unlock /stateu_def /= hiden_mapb2r //=.
     by move=> s' [[ls1 h1] [ls2 h2]]; rewrite !renamepE /= !renamem_union.
-  by rewrite names_newblock in_fset0.
-- rewrite /bound_free -lock /= -hide_mapb; last exact: rename_free.
-  by rewrite obound_hide result_of_option_omap.
+  by rewrite names_newblock fdisjointC fdisjoint0.
+- rewrite /bound_free -lock /= -hiden_mapb; last exact: rename_free.
+  by rewrite obound_hiden result_of_option_omap.
 - by rewrite IH; case: eval_com.
-- rewrite /bound_eval_cond -lock /= -hide_mapb; last exact: rename_eval_cond.
-  by rewrite hideT; case: (expose _).
-rewrite /bound_eval_cond -lock /= -hide_mapb; last exact: rename_eval_cond.
-by rewrite hideT; case: (expose _).
+- rewrite /bound_eval_cond -lock /= -hiden_mapb; last exact: rename_eval_cond.
+  by rewrite hidenT; case: (expose _).
+rewrite /bound_eval_cond -lock /= -hiden_mapb; last exact: rename_eval_cond.
+by rewrite hidenT; case: (expose _).
 Qed.
 
 Lemma restriction_ok A (s s' : name -> state) c k :
   (eval_com bound_sem (s (fresh A)) c k = Done (s' (fresh A))) ->
   eval_com bound_sem (new A s) c k = Done (new A s').
 Proof.
-by move=> e; rewrite /new; rewrite eval_com_hide e.
+by move=> e; rewrite /new; rewrite eval_com_hiden e.
 Qed.
 
 Lemma restriction_error A (s : name -> state) c k :
   (eval_com bound_sem (s (fresh A)) c k = Error) ->
   eval_com bound_sem (new A s) c k = Error.
 Proof.
-move=> e; rewrite /new; by rewrite eval_com_hide e.
+move=> e; rewrite /new; by rewrite eval_com_hiden e.
 Qed.
 
 Lemma restriction_loop A (s : name -> state) c k :
   (eval_com bound_sem (s (fresh A)) c k = NotYet) ->
   eval_com bound_sem (new A s) c k = NotYet.
 Proof.
-move=> e; rewrite /new; by rewrite eval_com_hide e.
+move=> e; rewrite /new; by rewrite eval_com_hiden e.
 Qed.
 
 Theorem frame_ok s1 s1' s2 c k :
