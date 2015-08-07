@@ -727,13 +727,15 @@ Local Open Scope string_scope.
 Local Notation "c1 ;; c2" :=
   (Seq c1 c2) (at level 70, right associativity).
 
+Definition listrev_body :=
+  Load "y" (Add "x" 1);;
+  Store (Add "x" 1) "r";;
+  Assn "r" "x";;
+  Assn "x" "y";;
+  Assn "y" ENil.
+
 Definition listrev :=
-  While (Neg (Eq "x" ENil))
-        (Load "y" (Add "x" 1);;
-         Store (Add "x" 1) "r";;
-         Assn "r" "x";;
-         Assn "x" "y";;
-         Assn "y" ENil).
+  While (Neg (Eq "x" ENil)) listrev_body.
 
 Lemma eval_exprb_neg e s :
   eval_exprb (Neg e) s =
@@ -753,6 +755,91 @@ Lemma setlU s1 s2 x v :
   if x \in vars_s s1 then setl s1 x v * s2
   else s1 * setl s2 x v.
 Proof. admit. Qed.
+
+Lemma hideUl i s1 s2 :
+  i \notin names s2 ->
+  hide i (s1 * s2) = hide i s1 * s2.
+Proof.
+rewrite [stateu]unlock /stateu_def /=.
+apply: hide_mapb2l=> /= {i} i [[/= ls1 h1] [/= ls2 h2]].
+by rewrite renamepE /= !renamem_union.
+Qed.
+
+Lemma mem_names_stateun i s1 s2 :
+  i \notin names s1 ->
+  i \notin names s2 ->
+  i \notin names (s1 * s2).
+Proof.
+move=> nin1 nin2.
+have {nin1 nin2} nin: i \notin names (s1, s2).
+  by rewrite in_fsetU /= negb_or nin1.
+apply: contra nin.
+have e : equivariant (fun p => p.1 * p.2).
+  by move=> pm [ls h]; rewrite rename_stateu.
+apply/fsubsetP.
+by apply: (equivariant_names e).
+Qed.
+
+Definition names_stateE :=
+  (names_locval, names_blockat).
+
+Definition pub_stateE :=
+  (pub_locval, pub_blockat, pubU,
+   pub_lb, pub_ll, fset0U, fsetU0).
+
+Definition vars_stateE :=
+  (vars_s_locval, vars_s_blockat,
+   vars_s_stateu, vars_lb, vars_ll, fsetU0).
+
+Lemma triple_cons ef s c s' s'' :
+  triple ef s c s' ->
+  s' = s'' ->
+  triple ef s c s''.
+Proof. by move=> ? <-. Qed.
+
+Lemma listrev_aux i i' i'' v vs vs' :
+  triple Total
+         ("x" ::= VPtr (i, Posz 0)
+          * i :-> [:: v; lh i' vs]
+          * "r" ::= lh i'' vs'
+          * "y" ::= VNil)
+         listrev_body
+         ("x" ::= lh i' vs
+          * i :-> [:: v; lh i'' vs']
+          * "r" ::= VPtr (i, Posz 0)
+          * "y" ::= VNil).
+Proof.
+apply: (triple_seq (@triple_load _ _ _ (i, Posz 1) (lh i' vs) _ _)).
+- rewrite (@eval_exprb_binop (VPtr (i, Posz 0)) (VNum 1)) //.
+    rewrite -!stateuA eval_exprb_varl' ?eval_exprb_var //.
+    by rewrite vars_s_locval in_fset1.
+  by rewrite eval_exprb_num.
+- do 2![apply: loadbl].
+  rewrite stateuC ?vars_s_blockat ?pub_locval
+          ?[fdisjoint _ fset0]fdisjointC ?fdisjoint0 //.
+  by apply: loadbl; rewrite loadbp eqxx.
+rewrite setlU !vars_stateE in_fsetU /= setlx.
+apply: (triple_seq (@triple_store _ _ _ (i, Posz 1) (lh i'' vs')
+                                 ("x" ::= VPtr (i, Posz 0) * i :-> [:: v; lh i'' vs'] * "r" ::= lh i'' vs' *
+                                  "y" ::= lh i' vs) _ _ _)).
+- rewrite (@eval_exprb_binop (VPtr (i, Posz 0)) (VNum 1)) //.
+    rewrite -!stateuA eval_exprb_varl' ?eval_exprb_var //.
+    by rewrite vars_s_locval in_fset1.
+  by rewrite eval_exprb_num.
+- rewrite eval_exprb_varl'; last first.
+    by rewrite !vars_stateE in_fsetU /=.
+  by rewrite eval_exprb_varr ?vars_stateE // eval_exprb_var.
+- admit.
+apply: (triple_seq (@triple_assn _ _ _ (VPtr (i, Posz 0)) _)).
+  by rewrite -!stateuA eval_exprb_varl' ?vars_stateE ?in_fsetU // eval_exprb_var.
+rewrite setlU !vars_stateE in_fsetU /= setlU !vars_stateE /= setlx.
+apply: (triple_seq (@triple_assn _ _ _ (lh i' vs) _)).
+  by rewrite eval_exprb_varr ?vars_stateE ?in_fsetU // eval_exprb_var.
+do 3![rewrite setlU !vars_stateE ?in_fsetU /=]; rewrite setlx.
+apply: (triple_cons (@triple_assn _ _ _ VNil _) _).
+  by rewrite eval_exprb_nil.
+by rewrite setlU !vars_stateE in_fsetU //= setlx.
+Qed.
 
 Lemma listrev_spec vs :
   triple Total
@@ -789,6 +876,40 @@ rewrite -![_ :|: names vs' :|: _]fsetUA [names vs' :|: _]fsetUC fsetUA.
 rewrite [ll]unlock /ll_def.
 apply: triple_restriction=> i; rewrite !in_fsetU !negb_or -andbA.
 case/and3P=> [i_v i_vs i_vs'].
+set A := names v :|: names vs :|: names vs'.
+rewrite {1}/new hideUl //; first last.
+  set i' := fresh (i |: A).
+  have sub: fsubset (names vs') (i' |: (i |: A)).
+    rewrite !fsetU1E; apply/fsubsetU/orP; right; apply/fsubsetU/orP; right.
+    apply/fsubsetU/orP; right; exact: fsubsetxx.
+  rewrite (newS _ sub); last first.
+    move=> pm dis i'' /=; rewrite !rename_stateu rename_lb rename_locval.
+    by rewrite rename_lh (names_disjointE dis).
+  apply mem_names_stateun; last by rewrite names_locval.
+  rewrite /new names_hide in_fsetD1 negb_and // mem_names_stateun ?orbT //.
+    rewrite names_locval names_lh; case: ifP=> // _.
+    apply/fset1P=> ei.
+    by move: (freshP (i' |: (i |: A))); rewrite -{1}ei in_fsetU1 eqxx.
+  rewrite names_lb in_fsetU negb_or pub_lb; apply/andP; split.
+    case: (vs')=> // _ _.
+    apply/fset1P=> ei.
+    move: (freshP (i' |: (i |: A))).
+    by rewrite -ei in_fsetU1 eqxx.
+  apply: contra (freshP (i |: A)).
+  by rewrite in_fsetU1 in_fsetU=> ->; rewrite !orbT.
+
+- by rewrite names_locval in_fset0.
+-
+
+
+rewrite [X in triple _ X _ _](_ : _ = hiden (fset1 (fresh A))).
+
+
+have ->: (new (i |: (names v :|: names vs :|: names vs'))
+              (fun i' =
+
+
+
 apply: triple_restriction=> i'; rewrite in_fsetU1 !in_fsetU !negb_or -andbA.
 case/and4P=> [ii' i'_v i'_vs i'_vs'].
 apply: (triple_seq (@triple_load _ _ _ (i', Posz 1) (lh i vs) _ _)).
