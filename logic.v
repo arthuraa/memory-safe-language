@@ -122,7 +122,11 @@ Qed.
 
 Lemma approx_vars s1 s2 :
   approx s1 s2 -> fsubset (vars_s s2) (vars_s s1).
-Proof. admit. Qed.
+Proof.
+case=> [/= A1 ls1 A2 ls2 h -> -> {s1 s2} sub Pls].
+rewrite !vars_sE.
+by apply/fsubsetP=> x; rewrite !mem_domm => in2; rewrite Pls.
+Qed.
 
 (** Specify whether the result of executing some program is compatible
 with its expected output given a set of allowed effects [ef]. *)
@@ -155,54 +159,6 @@ Lemma triple_leq ef ef' s1 c s2 :
   triple ef s1 c s2 ->
   triple ef' s1 c s2.
 Proof. by move=> /compat_leq Pef [n0 Pn0]; exists n0=> ????; eauto. Qed.
-
-(*Lemma elim_triple_strong e s1 c1 s1' s2 c2 s2' :
-  (forall n,  eval_com bound_sem s1 c1 n = NotYet ->
-   exists2 n', n <= n' & eval_com bound_sem s2 c2 n' = NotYet) ->
-  (forall n, Err ⊑ e -> eval_com bound_sem s1 c1 n = Error ->
-   exists n', eval_com bound_sem s2 c2 n' = Error) ->
-  (forall n,  eval_com bound_sem s1 c1 n = Done s1' ->
-   exists n', eval_com bound_sem s2 c2 n' = Done s2') ->
-  triple e s1 c1 s1' -> triple e s2 c2 s2'.
-Proof.
-case: e=> [] /= ev_loop ev_error ev_ok.
-- by case=> [n ev]; rewrite /triple /=; eauto.
-- move=> ev n; move/(_ n): ev; rewrite !inE.
-  case/orP=> [] /eqP ev.
-    case/(_ _ ev): ev_loop=> [n' lnn' {ev} ev]; apply/orP; left.
-    by rewrite (eval_com_loop lnn' ev).
-  case/(_ _ ev): ev_ok=> [n' {ev} ev].
-  exact: (eval_com_ok n ev).
-- case=> [n]; rewrite !inE => /orP [] /eqP ev.
-    case/(_ _ erefl ev): ev_error=> [n' {ev} ev].
-    by exists n'; rewrite ev inE eqxx.
-  case/(_ _ ev): ev_ok=> [n' {ev} ev].
-  by exists n'; rewrite ev !inE eqxx orbT.
-move=> ev n; move/(_ n): ev; rewrite !inE => /or3P [] /eqP ev.
-- move/(_ _ ev): ev_loop => [n' lnn' {ev} ev].
-  by rewrite (eval_com_loop lnn' ev).
-- move/(_ _ erefl ev): ev_error=> [n' {ev} ev].
-  move: (eval_com_error n ev); rewrite /refine_result.
-  by case/orP=> -> //; rewrite orbT.
-move/(_ _ ev): ev_ok=> [n' {ev} ev].
-move: (eval_com_ok n ev); rewrite /refine_result.
-by case/orP=> -> //; rewrite !orbT.
-Qed.
-
-Lemma elim_triple e s1 c1 s1' s2 c2 s2' :
-  (forall n, eval_com bound_sem s1 c1 n = NotYet ->
-             eval_com bound_sem s2 c2 n = NotYet) ->
-  (forall n, Err ⊑ e ->
-             eval_com bound_sem s1 c1 n = Error ->
-             eval_com bound_sem s2 c2 n = Error) ->
-  (forall n, eval_com bound_sem s1 c1 n = Done s1' ->
-             eval_com bound_sem s2 c2 n = Done s2') ->
-  triple e s1 c1 s1' -> triple e s2 c2 s2'.
-Proof.
-move=> ev_loop ev_error ev_ok.
-by apply: elim_triple_strong=> [n ev|n err ev|n ev]; exists n=> //; eauto.
-Qed.
-*)
 
 Lemma triple_skip ef s : triple ef s Skip s.
 Proof.
