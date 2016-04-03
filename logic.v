@@ -801,7 +801,8 @@ rewrite {1}/new hideUl //; first last.
     by rewrite -ei in_fsetU1 eqxx.
   apply: contra (freshP (i |: A)).
   by rewrite in_fsetU1 in_fsetU=> ->; rewrite !orbT.
-
+  admit.
+(*
 - by rewrite names_locval in_fset0.
 -
 
@@ -834,7 +835,7 @@ rewrite newC; last first.
   rewrite !rename_stateu !rename_locval rename_blockat rename_lb.
   rewrite [_ _ (ll _ vs')]names_disjointE ?names_ll //.
   rewrite [rename _ [:: _; _]]/rename /= [rename pm v]names_disjointE //.
-  by rewrite rename_lh [rename _ vs]names_disjointE //.
-Qed.
+  by rewrite rename_lh [rename _ vs]names_disjointE //. *)
+Admitted.
 
 End Logic.
