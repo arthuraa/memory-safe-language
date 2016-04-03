@@ -63,73 +63,6 @@ Notation "ef ⊑ ef'" := (effect_leq ef ef') (at level 70, no associativity).
 Notation "ef ⊏ ef'" :=
   ((ef != ef') && (ef ⊑ ef')) (at level 70, no associativity).
 
-(** Represent predicates with states. We say that [approx s1 s2] when
-[s2] can be obtained from [s1] by restricting names and removing local
-bindings. NB: Making it possible to "open" local names in
-specifications seems to require some work to be compatible with the
-frame rule, so we are not adopting this for now. *)
-
-CoInductive approx s1 s2 : Prop :=
-| Approx A1 ls1 A2 ls2 h
-  of s1 = mask A1 (ls1, h)
-  &  s2 = mask A2 (ls2, h)
-  &  fsubset A2 A1
-  &  (forall x, ls2 x -> ls1 x = ls2 x).
-
-(** Alternate formulation that provides additional useful hypotheses. *)
-CoInductive approx_sub s1 s2 : Prop :=
-| ApproxSub A1 ls1 A2 ls2 h
-  of s1 = mask A1 (ls1, h)
-  &  s2 = mask A2 (ls2, h)
-  &  fsubset A1 (names (ls1, h))
-  &  fsubset A2 (names (ls2, h))
-  &  fsubset A2 A1
-  &  (forall x, ls2 x -> ls1 x = ls2 x).
-
-Lemma approxP s1 s2 : approx s1 s2 <-> approx_sub s1 s2.
-Proof.
-split; case; last by move=> *; econstructor; eauto.
-move=> /= A1 ls1 A2 ls2 h -> -> sub12 Pls.
-have sub12': fsubset (names (ls2, h)) (names (ls1, h)).
-  apply/fsubsetP=> i /fsetUP /= [in_ls|in_h]; apply/fsetUP=> /=; last by auto.
-  left; case/namesmP: in_ls=> [???|x v Pget in_v]; first by rewrite namesT.
-  apply/fsetUP; right; apply/namesfsP; exists v=> //.
-  by apply/codommP; exists x; rewrite -Pget; apply: Pls; rewrite Pget.
-move: {sub12 sub12'} (fsetISS sub12 sub12').
-by rewrite maskE (maskE A2)=> sub12; econstructor; eauto; try apply: fsubsetIr.
-Qed.
-
-Lemma approxss s : approx s s.
-Proof.
-case: s / boundP=> [/= A [ls h] sub]; econstructor=> //.
-exact: fsubsetxx.
-Qed.
-
-Lemma approx_trans s2 s1 s3 : approx s1 s2 -> approx s2 s3 -> approx s1 s3.
-Proof.
-case/approxP=> [/= A1 ls1 A2 ls2 h -> -> sub1 sub2 sub12 Pls12 {s1 s2}].
-case/approxP=> [/= A2' ls2' A3 ls3 h' e2 -> sub2'].
-have {sub2'} eA2: A2' = A2 by rewrite -(namesbE sub2) e2 namesbE.
-rewrite {}eA2 {A2'} in e2 *.
-case/maskP: e2=> // pm dis [<- <-] {ls2' h'} sub3 sub23 Pls23.
-have ->: mask A3 (ls3, rename pm h) = mask A3 (rename pm^-1%fperm ls3, h).
-  apply/maskP=> //; exists pm^-1%fperm.
-    by rewrite supp_inv fdisjointC (fdisjoint_trans sub23) // fdisjointC.
-  by rewrite renamepE /= renameK.
-econstructor; eauto; first exact: (fsubset_trans sub23).
-move=> /= x Pls3; move: Pls3 (Pls23 x) (Pls12 x); rewrite !renamemE !renameT.
-case: (ls3 x)=> [v3|] //= _ /(_ erefl).
-by case: (ls2 x)=> [v2|] //= <- /(_ erefl) ->; rewrite renameK.
-Qed.
-
-Lemma approx_vars s1 s2 :
-  approx s1 s2 -> fsubset (vars_s s2) (vars_s s1).
-Proof.
-case=> [/= A1 ls1 A2 ls2 h -> -> {s1 s2} sub Pls].
-rewrite !vars_sE.
-by apply/fsubsetP=> x; rewrite !mem_domm => in2; rewrite Pls.
-Qed.
-
 (** Specify whether the result of executing some program is compatible
 with its expected output given a set of allowed effects [ef]. *)
 
@@ -172,7 +105,7 @@ least a minimum number of [n0] steps. *)
 
 Definition triple ef s1 c s2 :=
   exists n0, forall n, n0 <= n ->
-    compat ef (eval_com bound_sem s1 c n) s2.
+    compat ef (eval_com restr_sem s1 c n) s2.
 
 Lemma triple_leq ef ef' s1 c s2 :
   ef ⊑ ef' ->
@@ -234,15 +167,15 @@ by rewrite (restriction_loop ev) /=.
 Qed.
 
 Definition eval_exprb e (s : state) : option value :=
-  oexpose (mapb (fun ps => eval_expr true ps.1 e) s).
+  oexpose (mapr (fun ps => eval_expr true ps.1 e) s).
 
 Lemma eval_exprbE e A ls h :
   eval_exprb e (mask A (ls, h))
-  = (if fsubset (names (eval_expr true ls e)) A then
+  = (if fdisjoint A (names (eval_expr true ls e)) then
        Some (eval_expr true ls e)
      else None).
 Proof.
-rewrite /eval_exprb mapbE /=; last first.
+rewrite /eval_exprb maprE /=; last first.
   by move=> {ls h} s [ls h] /=; rewrite rename_eval_expr.
 by rewrite oexposeE.
 Qed.
@@ -256,8 +189,8 @@ Lemma triple_if ef s ex ct ce s' :
 Proof.
 case ev_ex: eval_exprb=> [[b| | |]|] // [n0 t].
 exists n0.+1=> - [|n] //; rewrite ltnS /= => /t {t}.
-case: s / boundP ev_ex=> [/= A [ls h] sub].
-rewrite eval_exprbE bound_eval_condE /=.
+case: s / (restrP fset0) ev_ex=> [/= A [ls h] _ sub].
+rewrite eval_exprbE restr_eval_condE /=.
 by case: ifP=> _ // [->].
 Qed.
 
@@ -270,28 +203,26 @@ Lemma triple_while ef s ex c s' :
 Proof.
 case ev_ex: eval_exprb=> [[b| | |]|] // [n0 t].
 exists n0.+1=> - [|n] //; rewrite ltnS /= => /t {t}.
-case: s / boundP ev_ex=> [/= A [ls h] sub].
-rewrite eval_exprbE bound_eval_condE /=.
+case: s / (restrP fset0) ev_ex=> [/= A [ls h] _ sub].
+rewrite eval_exprbE restr_eval_condE /=.
 by case: ifP=> _ // [->].
 Qed.
 
 Lemma setl_key : unit. Proof. exact: tt. Qed.
 Definition setl_def (s : state) x v :=
-  mapb_fs (names v) (fun ps => (setm ps.1 x v, ps.2)) s.
+  mapr_fs (names v) (fun ps => (setm ps.1 x v, ps.2)) s.
 Definition setl := locked_with setl_key setl_def.
 
 Lemma setlE A ps x v :
-  fsubset (names v) A ->
+  fdisjoint (names v) A ->
   fsubset A (names ps) ->
   setl (mask A ps) x v = mask A (setm ps.1 x v, ps.2).
 Proof.
-move=> sub1 sub2; rewrite [setl]unlock /setl_def mapb_fsE //.
-- by congr mask; apply/eqP.
-- move=> pm /= dis [ls h] /=.
-  rewrite renamepE /=; congr pair.
-  rewrite renamem_set; congr setm.
-  by rewrite names_disjointE.
-by apply: fsubIset; rewrite sub1.
+move=> sub1 sub2; rewrite [setl]unlock /setl_def mapr_fsE //.
+move=> pm /= dis [ls h] /=.
+rewrite renamepE /=; congr pair.
+rewrite renamem_set; congr setm.
+by rewrite names_disjointE.
 Qed.
 
 Lemma setlx x v v' : setl (x ::= v) x v' = (x ::= v').
@@ -305,14 +236,12 @@ have P:
     by case: eqP=> // _ [<-].
   move=> n_in_v'; apply/fsetUP; right; apply/namesfsP; exists v''=> //.
   by apply/codommP; exists x; rewrite setmE eqxx.
-rewrite [setl]unlock /setl_def /locval /= mapb_fsE /=.
-- rewrite [X in (X, _)](_ : _ = setm emptym x v'); last first.
-    by apply/eq_partmap=> x'; rewrite !setmE; case: eqP.
-  rewrite maskE P; congr mask; apply/eqP; rewrite eqEfsubset fsubsetIr /=.
-  by rewrite fsubsetI fsubsetxx andbT; apply: fsubsetU; rewrite fsubsetxx.
-- move=> pm dis [/= ls h].
-  by rewrite renamepE /= renamem_set [_ _ v']names_disjointE.
-by rewrite P fsubIset // fsubsetxx orbT.
+rewrite [setl]unlock /setl_def /locval /= mapr_fsE /=
+  1?fdisjointC ?fdisjoint0 //.
+  rewrite [X in (X, _)](_ : _ = setm emptym x v') //; last first.
+  by apply/eq_partmap=> x'; rewrite !setmE; case: eqP.
+move=> pm dis [/= ls h].
+by rewrite renamepE /= renamem_set [_ _ v']names_disjointE.
 Qed.
 
 Lemma triple_assn s x e v :
@@ -320,30 +249,28 @@ Lemma triple_assn s x e v :
   triple Total s (Assn x e) (setl s x v).
 Proof.
 move=> /= ev; exists 1=> - [|n] //= _.
-case: s / boundP ev => [/= A [ls h] sub].
+case: s / (restrP fset0) ev => [/= A [ls h] _ sub].
 rewrite eval_exprbE; case: ifP => // sub' [ev].
-move: sub'; rewrite bound_assnE /= ev => sub'.
-by rewrite setlE //.
+move: sub'; rewrite restr_assnE /= ev => sub'.
+by rewrite setlE // fdisjointC.
 Qed.
 
 Definition loadb (s : state) (ptr : name * int) :=
-  odflt None (oexpose (mapb_fs (names ptr)
+  odflt None (oexpose (mapr_fs (names ptr)
                                (fun s : locals * heap => s.2 ptr) s)).
 
 Lemma loadbE A ps ptr :
-  fsubset (names ptr) A ->
+  fdisjoint (names ptr) A ->
   fsubset A (names ps) ->
   loadb (mask A ps) ptr =
-  if fsubset (names (ps.2 ptr)) A then
+  if fdisjoint A (names (ps.2 ptr)) then
     ps.2 ptr
   else None.
 Proof.
-move=> sub1 sub2; rewrite /loadb mapb_fsE.
-- move: (sub1); rewrite {1}/fsubset; move/eqP=> ->.
+move=> dis sub; rewrite /loadb mapr_fsE //.
   by rewrite oexposeE; case: ifP.
-- move=> pm /= dis [ls h] /=.
-  by rewrite renamemE [rename _ ptr]names_disjointE // supp_inv.
-by apply: fsubIset; rewrite sub1.
+move=> pm /= dis' [ls h] /=.
+by rewrite renamemE [rename _ ptr]names_disjointE // supp_inv.
 Qed.
 
 Lemma loadbp i i' vs n :
@@ -354,42 +281,28 @@ Lemma loadbp i i' vs n :
   else None.
 Proof.
 rewrite /loadb [blockat]unlock /= {1}/names /= /prod_names /= namesT fsetU0.
-rewrite namesnE mapb_fsE /=.
-- rewrite oexposeE mkpartmapfE.
+rewrite namesnE mapr_fsE /= 1?fdisjointC ?fdisjoint0 //.
+  rewrite oexposeE mkpartmapfE fdisjoint0.
   case: eqP=> [->{i'}|ne].
-    rewrite fsetU1E fsetUA fsetUid -fsetU1E.
     case: n=> [n|n] /=.
       rewrite mem_map=> [|?? [<-]] //; rewrite mem_iota add0n leq0n /=.
       case: (ifP (n < size vs)) => [lvs|gvs].
-        rewrite {1}/names /= ifT /= ?(nth_map VNil None _ lvs) //.
-        apply/fsubsetP=> i' Pi'; apply/fsetU1P; right.
-        apply/namessP; exists (nth VNil vs n)=> //.
-        by apply/(nthP VNil); eauto.
-      rewrite {1}/names /= fsub0set /= nth_default //.
-      by rewrite size_map leqNgt gvs.
-    rewrite (@ifF _ (_ \in _)); first by rewrite /names /= fsub0set.
+        by rewrite ?(nth_map VNil None _ lvs) //.
+      by rewrite nth_default // size_map leqNgt gvs.
+    rewrite (@ifF _ (_ \in _)) //.
     by apply/negbTE/mapP=> - [? ?].
-  rewrite (@ifF _ (_ \in _)); first by rewrite /names /= fsub0set.
+  rewrite (@ifF _ (_ \in _)) //.
   apply/negbTE/mapP=> - [? ?]; congruence.
-- move=> pm dis /= [ls h] /=.
-  rewrite renamemE [rename _ (_, _)]names_disjointE //.
-  by rewrite supp_inv /names /= /prod_names /= namesT fsetU0.
-apply/fsubsetP=> i'' /fsetIP [/fset1P -> {i''}].
-case/fsetUP=> [] /=; first by rewrite namesm_empty.
-rewrite namesm_mkpartmapf=> /fsetUP [] /namessP.
-  case=> [p /mapP [? ? ->] /fsetUP []] /=; last by rewrite namesT.
-  by move=> /namesnP ->; apply/fsetU1P; auto.
-case=> [v /mapP [p /mapP [n']]].
-rewrite mem_iota leq0n /= add0n => Pn' -> {p} /= -> Pi'.
-apply/fsetU1P; right; apply/namessP; exists (nth VNil vs n')=> //.
-by apply/(nthP VNil); eauto.
+move=> pm dis /= [ls h] /=.
+rewrite renamemE [rename _ (_, _)]names_disjointE //.
+by rewrite supp_inv /names /= /prod_names /= namesT fsetU0.
 Qed.
 
 Lemma loadbl v s1 s2 ptr :
   loadb s1 ptr = Some v ->
   loadb (s1 * s2) ptr = Some v.
 Proof.
-case: s1 s2 / (fbound2P (names ptr))
+case: s1 s2 / (frestr2P (names ptr))
   => [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2 sub3 sub4].
 admit.
 Qed.
@@ -400,41 +313,39 @@ Lemma triple_load s x e ptr v :
   triple Total s (Load x e) (setl s x v).
 Proof.
 move=> /= ev_ex get; exists 1=> - [|n] //= _.
-case: s / boundP ev_ex get => [/= A [ls h] sub].
+case: s / (restrP fset0) ev_ex get => [/= A [ls h] _ sub].
 rewrite eval_exprbE; case: ifP=> // sub' [ev].
-rewrite ev in sub'; rewrite loadbE //=.
-rewrite bound_loadE /= ev.
+rewrite ev in sub'; rewrite loadbE //= 1?fdisjointC //.
+rewrite restr_loadE /= ev.
 case: ifP=> // sub'' get; rewrite get /=.
-by rewrite get in sub''; rewrite setlE.
+by rewrite get in sub''; rewrite setlE // fdisjointC.
 Qed.
 
 Definition storeb (s : state) (ptr : name * int) v :=
-  obound (locked mapb_fs _ _ (names ptr :|: names v)
+  orestr (locked mapr_fs _ _ (names ptr :|: names v)
                  (fun ps => omap (fun h => (ps.1, h)) (updm ps.2 ptr v)) s).
 
 Lemma storebE A ps ptr v :
-  fsubset (names ptr) A ->
-  fsubset (names v) A ->
+  fdisjoint (names ptr) A ->
+  fdisjoint (names v) A ->
   fsubset A (names ps) ->
   storeb (mask A ps) ptr v =
   omap (fun h => mask A (ps.1, h)) (updm ps.2 ptr v).
 Proof.
-move: ps ptr v => [/= ls h] ptr v sub1 sub2 sub3.
-have sub4: fsubset (names ptr :|: names v) A by rewrite fsubUset sub1.
-rewrite /storeb -!lock /= mapb_fsE /= ?oboundE.
-- by move: sub4; rewrite {1}/fsubset => /eqP ->; case: updm.
-- move=> pm /= dis {ls h sub3} [ls' h'] /=.
-  have dis1: fdisjoint (supp pm) (names ptr).
-    rewrite fdisjointC in dis; rewrite fdisjointC.
-    by apply: (fdisjoint_trans (fsubsetUl _ (names v))).
-  have dis2: fdisjoint (supp pm) (names v).
-    rewrite fdisjointC in dis; rewrite fdisjointC.
-    by apply: (fdisjoint_trans (fsubsetUr (names ptr) _)).
-  rewrite /updm renamemE [rename _ ptr]names_disjointE ?supp_inv //.
-  case get: (h' ptr)=> [v'|] //=.
-  rewrite {1}/rename /= renamepE /= renamem_set.
-  by rewrite [rename _ ptr]names_disjointE // [rename _ v]names_disjointE.
-by apply/fsubIset; rewrite sub4.
+move: ps ptr v => [/= ls h] ptr v dis1 dis2 sub.
+have dis3: fdisjoint (names ptr :|: names v) A by rewrite fdisjointUl dis1.
+rewrite /storeb -!lock /= mapr_fsE /= ?orestrE //; first by case: updm.
+move=> pm /= dis {ls h sub} [ls' h'] /=.
+have dis1': fdisjoint (supp pm) (names ptr).
+  rewrite fdisjointC in dis; rewrite fdisjointC.
+  by apply: (fdisjoint_trans (fsubsetUl _ (names v))).
+have dis2': fdisjoint (supp pm) (names v).
+  rewrite fdisjointC in dis; rewrite fdisjointC.
+  by apply: (fdisjoint_trans (fsubsetUr (names ptr) _)).
+rewrite /updm renamemE [rename _ ptr]names_disjointE ?supp_inv //.
+case get: (h' ptr)=> [v'|] //=.
+rewrite {1}/rename /= renamepE /= renamem_set.
+by rewrite [rename _ ptr]names_disjointE // [rename _ v]names_disjointE.
 Qed.
 
 Lemma triple_store s e e' ptr v s' :
@@ -443,12 +354,12 @@ Lemma triple_store s e e' ptr v s' :
   storeb s ptr v = Some s' ->
   triple Total s (Store e e') s'.
 Proof.
-case: s / boundP=> [/= A [ls h] sub] ev_e ev_e' st.
-exists 1=> - [|n] //= _; rewrite bound_storeE /=.
+case: s / (restrP fset0)=> [/= A [ls h] _ sub] ev_e ev_e' st.
+exists 1=> - [|n] //= _; rewrite restr_storeE /=.
 move: ev_e ev_e' st.
 rewrite eval_exprbE; case: ifP=> // sub' [e_ptr]; rewrite e_ptr in sub' *.
 rewrite eval_exprbE; case: ifP=> // sub'' [e_v]; rewrite e_v in sub'' *.
-rewrite storebE //= /updm.
+rewrite storebE //= /updm // 1?fdisjointC //.
 by case: (h ptr)=> [v'|] //= [<-].
 Qed.
 
@@ -618,72 +529,65 @@ Lemma eval_exprb_new e A f :
 Proof.
 move=> fr; rewrite /new.
 move: (fresh _) (fr _ (freshP A))=> {A fr} i; move: (f i)=> {f} s.
-case: s / (fboundP (fset1 i))=> [/= A [ls h] sub1 sub2].
-rewrite hideE !eval_exprbE; case: ifPn=> [sub fresh_i|sub _].
-  rewrite ifT //.
-  apply/fsubsetP=> i' in_e; rewrite in_fsetD1 (fsubsetP _ _ sub _ in_e) andbT.
-  by apply: contraTN in_e=> /eqP ->.
-rewrite ifN //; apply: contra sub=> sub; apply: (fsubset_trans sub).
-by rewrite fsubD1set fsetU1E fsubsetUr.
+case: s / (restrP (fset1 i))=> [/= A [ls h] dis sub].
+rewrite hideE !eval_exprbE; case: ifPn=> [sub' fresh_i|sub' _].
+  rewrite /fdisjoint ifT // fsetU1E fsetIUl (eqP sub') fsetU0.
+  by apply/eqP/fdisjoint_fsetI0; rewrite fdisjointC fdisjoints1.
+rewrite /fdisjoint ifN //; apply: contra sub'.
+by rewrite fsetU1E fsetIUl fsetU_eq0; case/andP.
 Qed.
 
 Lemma eval_exprb_nil s : eval_exprb ENil s = Some VNil.
 Proof.
-case: s / boundP=> [/= A [ls h] sub].
-by rewrite eval_exprbE /= fsub0set.
+case: s / (restrP fset0)=> [/= A [ls h] _ sub].
+by rewrite eval_exprbE /=.
 Qed.
 
 Lemma eval_exprb_var x v : eval_exprb (Var x) (x ::= v) = Some v.
-Proof.
-by rewrite /locval eval_exprbE /= setmE eqxx /= fsubsetxx.
-Qed.
+Proof. by rewrite /locval eval_exprbE /= /fdisjoint fset0I setmE !eqxx. Qed.
 
 Lemma eval_exprb_varl x s1 s2 :
   x \notin vars_s s2 ->
   eval_exprb (Var x) (s1 * s2) = eval_exprb (Var x) s1.
 Proof.
-case: s1 s2 / bound2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+case: s1 s2 / restr2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite stateuE // !eval_exprbE /= vars_sE /= unionmE => /dommPn ->.
-case get: (ls1 _)=> [v|] //=; last by rewrite namesvE !fsub0set.
-case/and3P: mf=> [/fsubsetP mf _ _].
-rewrite [fsubset _ _ in LHS](_ : _ = fsubset (names v) A1) //.
-apply/idP/idP; last by move=> h; apply/fsubsetU; rewrite h.
-move=> /fsubsetP sub {sub1 sub2}; apply/fsubsetP=> i in_v.
-case/(_ _ in_v)/fsetUP: sub=> // in_A2; apply: mf.
-rewrite in_fsetI in_A2 andbT; apply/fsetUP; left; apply/fsetUP; right=> /=.
-by apply/namesfsP; exists v=> //; apply/codommP; eauto.
+case get: (ls1 _)=> [v|] //=.
+rewrite fdisjointUl; case: fdisjoint=> //=.
+suff: fdisjoint A2 (names v) by move=> ->.
+rewrite fdisjointC; apply/fdisjointP=> /= n n_in.
+case/andP: mf=> _ /fdisjointP/(_ n)/contraTN; apply.
+rewrite in_fsetU /=; apply/orP; left.
+by apply/namesmP; apply: PMFreeNamesVal=> //.
 Qed.
 
 Lemma eval_exprb_varl' x s1 s2 :
   x \in vars_s s1 ->
   eval_exprb (Var x) (s1 * s2) = eval_exprb (Var x) s1.
 Proof.
-case: s1 s2 / bound2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+case: s1 s2 / restr2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite stateuE // !eval_exprbE /= vars_sE /= unionmE=> /dommP [v Px].
-rewrite Px /=.
-case/and3P: mf=> [/fsubsetP mf _ _].
-rewrite [fsubset _ _ in LHS](_ : _ = fsubset (names v) A1) //.
-apply/idP/idP; last by move=> h; apply/fsubsetU; rewrite h.
-move=> /fsubsetP sub {sub1 sub2}; apply/fsubsetP=> i in_v.
-case/(_ _ in_v)/fsetUP: sub=> // in_A2; apply: mf.
-rewrite in_fsetI in_A2 andbT; apply/fsetUP; left; apply/fsetUP; right=> /=.
-by apply/namesfsP; exists v=> //; apply/codommP; eauto.
+rewrite Px /= fdisjointUl; case: fdisjoint=> //=.
+suff: fdisjoint A2 (names v) by rewrite /fdisjoint => ->.
+rewrite fdisjointC; apply/fdisjointP=> /= n n_in.
+case/andP: mf=> _ /fdisjointP/(_ n)/contraTN; apply.
+rewrite in_fsetU /=; apply/orP; left.
+by apply/namesmP; apply: PMFreeNamesVal=> //.
 Qed.
 
 Lemma eval_exprb_varr x s1 s2 :
   x \notin vars_s s1 ->
   eval_exprb (Var x) (s1 * s2) = eval_exprb (Var x) s2.
 Proof.
-case: s1 s2 / bound2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
+case: s1 s2 / restr2P=> [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2].
 rewrite stateuE // !eval_exprbE /= vars_sE /= unionmE => /dommPn -> /=.
-case get: (ls2 _)=> [v|] //=; last by rewrite namesvE !fsub0set.
-case/and3P: mf=> [_ /fsubsetP mf _].
-rewrite [fsubset _ _ in LHS](_ : _ = fsubset (names v) A2) //.
-apply/idP/idP; last by move=> h; apply/fsubsetU; rewrite h orbT.
-move=> /fsubsetP sub {sub1 sub2}; apply/fsubsetP=> i in_v.
-case/(_ _ in_v)/fsetUP: sub=> // in_A1; apply: mf.
-rewrite in_fsetI in_A1 /=; apply/fsetUP; left; apply/fsetUP; right=> /=.
-by apply/namesfsP; exists v=> //; apply/codommP; eauto.
+case get: (ls2 _)=> [v|] //=.
+rewrite fdisjointUl andbC; case: fdisjoint=> //=.
+suff: fdisjoint A1 (names v) by rewrite /fdisjoint => ->.
+rewrite fdisjointC; apply/fdisjointP=> /= n n_in.
+case/andP: mf=> /fdisjointP/(_ n)/contraTN dis _; apply: dis.
+rewrite in_fsetU /=; apply/orP; left.
+by apply/namesmP; apply: PMFreeNamesVal=> //.
 Qed.
 
 Lemma eval_exprb_binop v1 v2 b e1 e2 s :
@@ -691,16 +595,16 @@ Lemma eval_exprb_binop v1 v2 b e1 e2 s :
   eval_exprb e2 s = Some v2 ->
   eval_exprb (Binop b e1 e2) s = Some (eval_binop b v1 v2).
 Proof.
-case: s / boundP=> [/= A [ls h] sub].
+case: s / (restrP fset0)=> [/= A [ls h] _ sub].
 rewrite !eval_exprbE /=.
 case: ifP=> //= sub1 [<-] {v1}; case: ifP=> //= sub2 [<-] {v2}.
-by rewrite (fsubset_trans (eval_binop_names b _ _)) // fsubUset /= sub1.
+rewrite fdisjointC (fdisjoint_trans (eval_binop_names b _ _)) //.
+by rewrite fdisjointUl /= fdisjointC sub1 fdisjointC.
 Qed.
 
 Lemma eval_exprb_num n s : eval_exprb (Num n) s = Some (VNum n).
 Proof.
-case: s / boundP=> [/= A [ls h] sub]; rewrite eval_exprbE /=.
-by rewrite namesvE fsub0set.
+by case: s / (restrP fset0)=> [/= A [ls h] _ sub]; rewrite eval_exprbE.
 Qed.
 
 Lemma ll1_nil x v vs s :
@@ -744,9 +648,9 @@ Lemma eval_exprb_neg e s :
   | _ => Some VNil
   end.
 Proof.
-case: s / boundP=> [/= A [ls h] sub].
+case: s / (restrP fset0)=> [/= A [ls h] sub].
 rewrite !eval_exprbE /=.
-case ev: eval_expr => [b| | |]; rewrite !namesvE fsub0set //.
+case ev: eval_expr => [b| | |]; rewrite !namesvE fdisjointC fdisjoint0 //.
 by case: ifP.
 Qed.
 
@@ -761,7 +665,7 @@ Lemma hideUl i s1 s2 :
   hide i (s1 * s2) = hide i s1 * s2.
 Proof.
 rewrite [stateu]unlock /stateu_def /=.
-apply: hide_mapb2l=> /= {i} i [[/= ls1 h1] [/= ls2 h2]].
+apply: hide_mapr2l=> /= {i} i [[/= ls1 h1] [/= ls2 h2]].
 by rewrite renamepE /= !renamem_union.
 Qed.
 

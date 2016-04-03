@@ -15,19 +15,12 @@ Section Basic.
 
 Local Open Scope fset_scope.
 
-Definition int_partOrdMixin :=
-  (@PartOrdMixin int <=%R (@Num.Theory.lerr _) (@Num.Theory.ler_trans _)
-                          (@Num.Theory.ler_anti _))%R.
-
-Canonical int_partOrdType :=
-  Eval hnf in PartOrdType int int_partOrdMixin.
-
 Definition int_ordMixin :=
-  @OrdMixin [partOrdType of int] (@Num.Theory.ler_total _).
+  (@OrdMixin int <=%R (@Num.Theory.lerr _) (@Num.Theory.ler_trans _)
+                      (@Num.Theory.ler_anti _)
+                      (@Num.Theory.ler_total _))%R.
 
-Canonical int_ordType :=
-  Eval hnf in OrdType int int_ordMixin.
-
+Canonical int_ordType := Eval hnf in OrdType int int_ordMixin.
 Canonical int_nominalType :=
   Eval hnf in [nominalType for int by //].
 Canonical int_trivialNominalType :=
@@ -89,9 +82,6 @@ Definition value_eqMixin := CanEqMixin sum_of_valueK.
 Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
 Definition value_choiceMixin := CanChoiceMixin sum_of_valueK.
 Canonical value_choiceType := Eval hnf in ChoiceType value value_choiceMixin.
-Definition value_partOrdMixin := CanPartOrdMixin sum_of_valueK.
-Canonical value_partOrdType :=
-  Eval hnf in PartOrdType value value_partOrdMixin.
 Definition value_ordMixin := CanOrdMixin sum_of_valueK.
 Canonical value_ordType := Eval hnf in OrdType value value_ordMixin.
 Definition value_nominalMixin := BijNominalMixin sum_of_valueK value_of_sumK.
@@ -227,10 +217,6 @@ Definition result_choiceMixin (T : choiceType) :=
   CanChoiceMixin (@sum_of_resultK T).
 Canonical result_choiceType (T : choiceType) :=
   Eval hnf in ChoiceType (result T) (result_choiceMixin T).
-Definition result_partOrdMixin (T : partOrdType) :=
-  CanPartOrdMixin (@sum_of_resultK T).
-Canonical result_partOrdType (T : partOrdType) :=
-  Eval hnf in PartOrdType (result T) (result_partOrdMixin T).
 Definition result_ordMixin (T : ordType) :=
   CanOrdMixin (@sum_of_resultK T).
 Canonical result_ordType (T : ordType) :=
@@ -240,7 +226,7 @@ Definition result_nominalMixin (T : nominalType) :=
 Canonical result_nominalType (T : nominalType) :=
   Eval hnf in NominalType (result T) (result_nominalMixin T).
 
-Lemma renamerE (T : nominalType) pm (r : result T) :
+Lemma renameresE (T : nominalType) pm (r : result T) :
   rename pm r =
   match r with
   | Done x => Done (rename pm x)
