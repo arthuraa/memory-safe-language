@@ -1,11 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.choice.
-Require Import Ssreflect.seq.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-Require Import MathComp.ssrnum MathComp.ssrint MathComp.ssralg MathComp.bigop.
-
-Require Import CoqUtils.ord CoqUtils.fset CoqUtils.partmap CoqUtils.fperm.
-Require Import CoqUtils.nominal CoqUtils.string.
+From CoqUtils Require Import ord fset partmap fperm nominal string.
 
 Require Import basic.
 
@@ -27,19 +23,19 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
-  by rewrite fsetU1E fsubsetUr.
+  by rewrite fsubsetUr.
 - case: eval_expr => // p; case: (h p)=> [v|] //=.
   rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
-  by rewrite fsetU1E fsubsetUr.
+  by rewrite fsubsetUr.
 - case: eval_expr => // p; rewrite /updm; case: (h p)=> [v|] //=.
   by rewrite fsubUset=> /andP [Pe Pe'] [<- _].
 - case: eval_expr => // - [n|] //.
   rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
-  by rewrite fsetU1E fsubsetUr.
+  by rewrite fsubsetUr.
 - case: eval_expr => // p.
   by have [|]:= altP eqP=> // _; case: free_fun=> // h'' _ [<- _].
 - congruence.
@@ -131,6 +127,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
     apply/(fsubset_trans _ (fsubsetUl _ _)).
     apply/(fsubset_trans (fsetSI _ (namesm_set _ _ _))).
     rewrite /= 2!fsetIUl 2!fsubUset fsubsetIl fset0I fsub0set /=.
+    rewrite namesvE /=.
     apply/fsubsetP=> i /fsetIP [/namesnP -> {i} /= Pi].
     move: F; rewrite in_fsetU negb_or=> /andP [_] /=.
     by rewrite namesm_union_disjoint // in_fsetU negb_or Pi andbF.

@@ -1,11 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.choice.
-Require Import Ssreflect.seq.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-Require Import MathComp.ssrnum MathComp.ssrint MathComp.ssralg MathComp.bigop.
-
-Require Import CoqUtils.ord CoqUtils.fset CoqUtils.partmap CoqUtils.fperm.
-Require Import CoqUtils.nominal CoqUtils.string.
+From CoqUtils Require Import ord fset partmap fperm nominal string.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -430,7 +426,7 @@ Lemma eval_binop_names b v1 v2 :
   fsubset (names (eval_binop b v1 v2)) (names (v1, v2)).
 Proof.
 case: b v1 v2=> [] [b1|n1|p1|] [b2|n2|p2|] //=; try by rewrite fsub0set.
-- by rewrite fsubsetU //= !namesvE fsubsetxx.
+- by rewrite fsubsetU //= !namesvE fsubsetxx orbT.
 - by rewrite fsubsetU //= !namesvE fsubsetxx.
 by rewrite fsubsetU //= !namesvE fsubsetxx.
 Qed.
@@ -452,7 +448,7 @@ Qed.
 Lemma names_init_block h i n :
   fsubset (names (init_block h i n)) (i |: names h).
 Proof.
-rewrite (fsubset_trans (namesm_union _ _)) // fsetU1E fsetSU //.
+rewrite (fsubset_trans (namesm_union _ _)) // fsetSU //.
 apply/fsubsetP=> i'; case/namesmP=> [p v|p v]; rewrite mkpartmapfE;
 case: ifP=> // /mapP [n' Pn'].
   by move=> -> {p} _; rewrite in_fsetU in_fset0 orbF.
@@ -469,9 +465,9 @@ Lemma fdisjoint_names_domm h1 h2 :
 Proof.
 move=> /fdisjointP dis; apply/fdisjointP=> p Pp.
 have /dis Pi: p.1 \in names (domm h1).
-  by apply/namesfsP; exists p=> //=; apply/namesnP.
+  by apply/namesfsP; exists p=> //=; apply/fsetUP; left; apply/namesnP.
 apply: contra Pi=> Pi; apply/namesfsP; exists p=> //.
-by apply/namesnP.
+by apply/fsetUP; left; apply/namesnP.
 Qed.
 
 End Basic.

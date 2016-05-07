@@ -1,13 +1,9 @@
 Require Import Coq.Unicode.Utf8.
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.choice.
-Require Import Ssreflect.seq.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-Require Import MathComp.ssrnum MathComp.ssrint MathComp.ssralg MathComp.bigop.
-
-Require Import CoqUtils.ord CoqUtils.fset CoqUtils.partmap CoqUtils.fperm.
-Require Import CoqUtils.nominal CoqUtils.string.
+From CoqUtils Require Import ord fset partmap fperm nominal string.
 
 Require Import basic structured.
 
@@ -88,8 +84,8 @@ Lemma compatP ef r s :
 Proof.
 rewrite compatE; apply/(iffP or3P).
 - move=> [/eqP ->|/andP [/eqP -> ?]|/andP [/eqP -> ?]];
-  econstructor (solve [eauto]).
-move=> [->|[-> ?]|[-> ?]]; econstructor (solve [eauto]).
+  [> once (econstructor; solve [eauto]) ..].
+move=> [->|[-> ?]|[-> ?]]; [> once (econstructor; solve [eauto]) ..].
 Qed.
 
 Lemma compat_leq ef ef' r s :
@@ -305,7 +301,7 @@ Proof.
 case: s1 s2 / (frestr2P (names ptr))
   => [/= A1 [ls1 h1] A2 [ls2 h2] mf sub1 sub2 sub3 sub4].
 admit.
-Qed.
+Admitted.
 
 Lemma triple_load s x e ptr v :
   eval_exprb e s = Some (VPtr ptr) ->
@@ -385,7 +381,7 @@ elim: vs i => /= [|v vs IH] /= i; first by rewrite vars_emp.
 by rewrite /new vars_s_hide vars_s_stateu vars_s_blockat IH fsetU0.
 Qed.
 
-Lemma pub_lb i vs : pub (lb i vs) = if vs is [::] then fset0 else fset1 i.
+Lemma pub_lb i vs : pub (lb i vs) = if nilp vs then fset0 else fset1 i.
 Proof.
 elim: vs i=> //= [|v vs IH] i; first by rewrite pub_emp.
 rewrite /new pub_hide.
@@ -413,17 +409,14 @@ move: (fresh _) (freshP (i |: names (v :: vs)))=> i'.
 rewrite namess1 => nin.
 move: (nin); rewrite in_fsetU1 in_fsetU !negb_or=> /and3P [ii' ninv ninvs].
 rewrite names_hide names_stateu; first last.
-  rewrite pub_blockat pub_lb; case: (vs)=> // _ _.
-    by apply/fdisjointP=> i'' /fset1P ->; rewrite in_fset1 eq_sym.
-  by rewrite !vars_s_blockat fdisjoint0.
+- rewrite pub_blockat pub_lb; case: (vs)=> /= [|_ _].
+    by rewrite fdisjointC fdisjoint0.
+  by apply/fdisjointP=> i'' /fset1P ->; rewrite in_fset1 eq_sym.
+- by rewrite !vars_s_blockat fdisjoint0.
 rewrite pub_hide pubU pub_blockat names_blockat /= namessE /= fsetU0 {}IH.
-rewrite fsetU1E !fsetD1U -!fsetUA; congr fsetU.
-have ->: names (lh i' vs) :\ i' = fset0.
-  by rewrite names_lh; case: (vs)=> //= ??; rewrite fsetD1E fsetDv.
-have ->: pub (lb i' vs) :\ i' = fset0.
-  by rewrite pub_lb; case: (vs)=> //= ??; rewrite fsetD1E fsetDv.
-rewrite !fset0U -fsetD1U.
-apply/eqP; rewrite eqEfsubset fsubD1set fsetU1E fsubsetUr /=.
+rewrite !fsetDUl names_lh pub_lb !fun_if !if_arg !fset0D !fsetDv if_same.
+rewrite !fsetU0 fset0U -fsetUA -fsetDUl; congr fsetU.
+apply/eqP; rewrite eqEfsubset fsubD1set fsubsetUr /=.
 apply/fsubsetP=> i'' inv; rewrite in_fsetD1 inv andbT.
 by apply: contraTN inv => /eqP ->; rewrite in_fsetU negb_or ninv.
 Qed.
@@ -436,7 +429,7 @@ elim: vs pm i=> [|v vs IH] pm i /=.
 rewrite rename_new; last first.
   move=> {pm} pm dis /= i'.
   rewrite rename_stateu rename_blockat /= renamenE IH.
-  move: dis; rewrite fsetU1E namess1 2!fdisjointUr fdisjoints1.
+  move: dis; rewrite namess1 2!fdisjointUr fdisjoints1.
   case/and3P=> [/suppPn pm_i disv disvs].
   rewrite pm_i renamesE /= names_disjointE //.
   by rewrite rename_lh /= (names_disjointE disvs).
@@ -464,7 +457,7 @@ Lemma pub_ll x vs : pub (ll x vs) = fset0.
 Proof.
 rewrite [ll]unlock /new pub_hide.
 rewrite pubU pub_locval fset0U pub_lb.
-by case: vs=> // ??; rewrite fsetD1E fsetDv.
+by rewrite fun_if if_arg fsetDv fset0D if_same.
 Qed.
 
 Lemma names_ll x vs : names (ll x vs) = names vs.
@@ -472,10 +465,10 @@ Proof.
 rewrite [ll]unlock /new names_hide.
 rewrite names_stateu ?vars_s_locval ?vars_lb 1?fdisjointC ?fdisjoint0 //.
   rewrite names_locval names_lh names_lb pub_lb.
-  case: vs=> [|v vs] /=; first by rewrite !fset0U namess0 fsetD1E fset0D.
+  case: vs=> [|v vs] /=; first by rewrite !fset0U namess0 fset0D.
   move: (_ :: _) (fresh _) (freshP (names (v :: vs))) => {v vs} vs i fr.
-  rewrite fsetUA fsetUid fsetD1U fsetD1E fsetDv fset0U.
-  apply/eqP; rewrite eqEfsubset fsubD1set fsetU1E fsubsetUr /=.
+  rewrite fsetUA fsetUid fsetDUl fsetDv fset0U.
+  apply/eqP; rewrite eqEfsubset fsubD1set fsubsetUr /=.
   apply/fsubsetP=> i' in_v; rewrite in_fsetD1.
   case: eqP in_v => [->|] //=.
   by rewrite (negbTE fr).
@@ -499,10 +492,10 @@ Lemma ll1 x v vs :
 Proof.
 rewrite [ll]unlock /ll_def /= namess1; apply/newP=> i Pn /=.
 rewrite new_stateur.
-  rewrite names_locval namesvE /= !fsetU1E !fsetUA fsetUid.
+  rewrite names_locval namesvE /= !fsetUA fsetUid.
   by apply/newP=> ??; rewrite stateuA.
 move=> pm.
-rewrite fsetU1E !fdisjointUr fdisjoints1 => /and3P [Pi Pv Pvs] i'.
+rewrite !fdisjointUr fdisjoints1 => /and3P [Pi Pv Pvs] i'.
 rewrite !rename_stateu rename_lb rename_blockat /=.
 rewrite {1}/rename /= names_disjointE // rename_lh names_disjointE //.
 by rewrite -renamenE names_disjointE // namesnE fdisjoints1.
@@ -517,7 +510,7 @@ Lemma ll1' x v vs s :
                        i :-> [:: v; lh i' vs] *
                        lb i' vs *
                        s)).
-Proof. admit. Qed.
+Proof. admit. Admitted.
 
 Coercion Binop : binop >-> Funclass.
 Coercion Var : string >-> expr.
@@ -531,16 +524,16 @@ move=> fr; rewrite /new.
 move: (fresh _) (fr _ (freshP A))=> {A fr} i; move: (f i)=> {f} s.
 case: s / (restrP (fset1 i))=> [/= A [ls h] dis sub].
 rewrite hideE !eval_exprbE; case: ifPn=> [sub' fresh_i|sub' _].
-  rewrite /fdisjoint ifT // fsetU1E fsetIUl (eqP sub') fsetU0.
+  rewrite /fdisjoint ifT // fsetIUl (eqP sub') fsetU0.
   by apply/eqP/fdisjoint_fsetI0; rewrite fdisjointC fdisjoints1.
 rewrite /fdisjoint ifN //; apply: contra sub'.
-by rewrite fsetU1E fsetIUl fsetU_eq0; case/andP.
+by rewrite fsetIUl fsetU_eq0; case/andP.
 Qed.
 
 Lemma eval_exprb_nil s : eval_exprb ENil s = Some VNil.
 Proof.
 case: s / (restrP fset0)=> [/= A [ls h] _ sub].
-by rewrite eval_exprbE /=.
+by rewrite eval_exprbE /= fdisjointC fdisjoint0.
 Qed.
 
 Lemma eval_exprb_var x v : eval_exprb (Var x) (x ::= v) = Some v.
@@ -558,7 +551,7 @@ suff: fdisjoint A2 (names v) by move=> ->.
 rewrite fdisjointC; apply/fdisjointP=> /= n n_in.
 case/andP: mf=> _ /fdisjointP/(_ n)/contraTN; apply.
 rewrite in_fsetU /=; apply/orP; left.
-by apply/namesmP; apply: PMFreeNamesVal=> //.
+by apply/namesmP; apply: PMFreeNamesVal n_in=> //; eauto.
 Qed.
 
 Lemma eval_exprb_varl' x s1 s2 :
@@ -572,7 +565,7 @@ suff: fdisjoint A2 (names v) by rewrite /fdisjoint => ->.
 rewrite fdisjointC; apply/fdisjointP=> /= n n_in.
 case/andP: mf=> _ /fdisjointP/(_ n)/contraTN; apply.
 rewrite in_fsetU /=; apply/orP; left.
-by apply/namesmP; apply: PMFreeNamesVal=> //.
+by apply/namesmP; apply: PMFreeNamesVal n_in; eauto.
 Qed.
 
 Lemma eval_exprb_varr x s1 s2 :
@@ -587,7 +580,7 @@ suff: fdisjoint A1 (names v) by rewrite /fdisjoint => ->.
 rewrite fdisjointC; apply/fdisjointP=> /= n n_in.
 case/andP: mf=> /fdisjointP/(_ n)/contraTN dis _; apply: dis.
 rewrite in_fsetU /=; apply/orP; left.
-by apply/namesmP; apply: PMFreeNamesVal=> //.
+by apply/namesmP; apply: PMFreeNamesVal n_in; eauto.
 Qed.
 
 Lemma eval_exprb_binop v1 v2 b e1 e2 s :
@@ -604,7 +597,8 @@ Qed.
 
 Lemma eval_exprb_num n s : eval_exprb (Num n) s = Some (VNum n).
 Proof.
-by case: s / (restrP fset0)=> [/= A [ls h] _ sub]; rewrite eval_exprbE.
+case: s / (restrP fset0)=> [/= A [ls h] _ sub].
+by rewrite eval_exprbE /= fdisjointC fdisjoint0.
 Qed.
 
 Lemma ll1_nil x v vs s :
@@ -658,7 +652,7 @@ Lemma setlU s1 s2 x v :
   setl (s1 * s2) x v =
   if x \in vars_s s1 then setl s1 x v * s2
   else s1 * setl s2 x v.
-Proof. admit. Qed.
+Proof. admit. Admitted.
 
 Lemma hideUl i s1 s2 :
   i \notin names s2 ->
@@ -678,10 +672,9 @@ move=> nin1 nin2.
 have {nin1 nin2} nin: i \notin names (s1, s2).
   by rewrite in_fsetU /= negb_or nin1.
 apply: contra nin.
-have e : equivariant (fun p => p.1 * p.2).
+have /= e : equivariant (fun p => p.1 * p.2).
   by move=> pm [ls h]; rewrite rename_stateu.
-apply/fsubsetP.
-by apply: (equivariant_names e).
+by apply/fsubsetP; apply: (equivariant_names e (s1, s2)).
 Qed.
 
 Definition names_stateE :=
@@ -743,7 +736,7 @@ do 3![rewrite setlU !vars_stateE ?in_fsetU /=]; rewrite setlx.
 apply: (triple_cons (@triple_assn _ _ _ VNil _) _).
   by rewrite eval_exprb_nil.
 by rewrite setlU !vars_stateE in_fsetU //= setlx.
-Qed.
+Admitted.
 
 Lemma listrev_spec vs :
   triple Total
@@ -784,7 +777,7 @@ set A := names v :|: names vs :|: names vs'.
 rewrite {1}/new hideUl //; first last.
   set i' := fresh (i |: A).
   have sub: fsubset (names vs') (i' |: (i |: A)).
-    rewrite !fsetU1E; apply/fsubsetU/orP; right; apply/fsubsetU/orP; right.
+    apply/fsubsetU/orP; right; apply/fsubsetU/orP; right.
     apply/fsubsetU/orP; right; exact: fsubsetxx.
   rewrite (newS _ sub); last first.
     move=> pm dis i'' /=; rewrite !rename_stateu rename_lb rename_locval.
@@ -795,7 +788,8 @@ rewrite {1}/new hideUl //; first last.
     apply/fset1P=> ei.
     by move: (freshP (i' |: (i |: A))); rewrite -{1}ei in_fsetU1 eqxx.
   rewrite names_lb in_fsetU negb_or pub_lb; apply/andP; split.
-    case: (vs')=> // _ _.
+    rewrite 3!fun_if in_fset0 /=.
+    case: (vs')=> //= _ _.
     apply/fset1P=> ei.
     move: (freshP (i' |: (i |: A))).
     by rewrite -ei in_fsetU1 eqxx.

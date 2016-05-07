@@ -1,11 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.choice.
-Require Import Ssreflect.seq.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-Require Import MathComp.ssrnum MathComp.ssrint MathComp.ssralg MathComp.bigop.
-
-Require Import CoqUtils.ord CoqUtils.fset CoqUtils.partmap CoqUtils.fperm.
-Require Import CoqUtils.nominal CoqUtils.string.
+From CoqUtils Require Import ord fset partmap fperm nominal string.
 
 Require Import basic.
 
@@ -195,7 +191,7 @@ Local Open Scope state_scope.
 
 Lemma vars_s_locval x v : vars_s (x ::= v) = fset1 x.
 Proof.
-by rewrite /locval vars_sE domm_set domm0 fsetU1E fsetU0.
+by rewrite /locval vars_sE domm_set domm0 fsetU0.
 Qed.
 
 Lemma names_locval x v : names (x ::= v) = names v.
@@ -239,11 +235,12 @@ Proof.
 rewrite [blockat]unlock /= pubE.
 rewrite (_ : names (domm _) = if vs is [::] then fset0 else fset1 i).
   case: vs=> [|v vs] /=; by rewrite fsetD0.
-case: vs=> [|v vs]; first by rewrite domm_mkpartmapf namesfsE /= big_nil.
+case: vs=> [|v vs].
+  by rewrite domm_mkpartmapf namesfsE /= -fset0E big_nil.
 rewrite domm_mkpartmapf; apply/eqP; rewrite eqEfsubset; apply/andP; split.
-  apply/fsubsetP=> i' /namesfsP [p]; rewrite in_mkfset.
-  by case: p=> [i'' n] /mapP [n' _ [<- _]].
-rewrite /= namesfsE bigcup_fsetU1; apply/fsubsetU/orP; left.
+  apply/fsubsetP=> i' /namesfsP [p]; rewrite in_fset.
+  by case: p=> [i'' n] /mapP [n' _ [<- _]]; rewrite in_fsetU in_fset0 orbF.
+rewrite /= namesfsE fset_cons bigcup_fsetU1; apply/fsubsetU/orP; left.
 by apply/fsubsetU/orP; left; rewrite fsubsetxx.
 Qed.
 
@@ -256,7 +253,7 @@ rewrite [blockat]unlock /=; case: ifPn=> [/nilP -> /=|vs0n].
   rewrite namesrE // fsetD0 namespE /= namesm_empty fset0U namesm_mkpartmapf.
   by rewrite !namessE /= fset0U.
 rewrite namesrE //= fsetD0 namespE /= namesm_empty fset0U namesm_mkpartmapf.
-rewrite fsetU1E; congr fsetU.
+congr fsetU.
   apply/eq_fset=> i'; apply/namessP/fset1P.
     case=> /= [[i'' n] /mapP [n' _ [-> _]]].
     by rewrite in_fsetU /= in_fset0 orbF=> /namesnP.
@@ -663,9 +660,9 @@ rewrite stateuE.
   have [Pe|] //= := altP eqP.
   have: p.1 \in names (domm h1).
     move: inD; rewrite domm_curry=> /imfsetP [p'' inD ->].
-    by apply/namesfsP; exists p''; last by apply/namesnP.
+    by apply/namesfsP; exists p''; last by apply/fsetUP; left; apply/namesnP.
   move=> /(fdisjointP _ _ dis_h _); rewrite -{}Pe (_ : p'.1 \in _ = true) //.
-  apply/namesfsP; exists p'; last by apply/namesnP.
+  apply/namesfsP; exists p'; last by apply/fsetUP; left; apply/namesnP.
   by apply/dommP; eauto.
 apply/(mutfreshS mf); last exact: fsubsetxx.
 by apply/fsetUS/namesm_filter.
@@ -784,13 +781,13 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
   rewrite restr_assnE /= !vars_sE domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
-  by rewrite fsetU1E fsubsetUr.
+  by rewrite fsubsetUr.
 - rewrite restr_loadE /=.
   case: eval_expr => // p; case: (h p)=> [v|] //=.
   rewrite fsubU1set !vars_sE=> /andP [Px Pe] [<-]; rewrite !vars_sE domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
-  by rewrite fsetU1E fsubsetUr.
+  by rewrite fsubsetUr.
 - rewrite restr_storeE !vars_sE /=.
   case: eval_expr => // p; rewrite /updm; case: (h p)=> [v|] //=.
   by rewrite fsubUset=> /andP [Pe Pe'] [<-]; rewrite vars_sE.
@@ -828,7 +825,7 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
 - rewrite restr_storeE /=; case eval_e: eval_expr=> [| |p|] //=.
   rewrite /updm; case get_p: (h p)=> [v|] //= [<-]; rewrite !pubE.
   rewrite domm_set (_ : p |: domm h = domm h) ?fsubsetxx //.
-  apply/eqP; rewrite eqEfsubset fsetU1E fsubsetUr fsubUset fsubsetxx !andbT.
+  apply/eqP; rewrite eqEfsubset fsubsetUr fsubUset fsubsetxx !andbT.
   by apply/fsubsetP=> ? /fset1P ->; rewrite mem_domm get_p.
 - rewrite /restr_alloc restr_eval_natE.
   case: eval_nat => [n|] //= [<-].

@@ -1,3 +1,4 @@
+-R . Top
 -install none
 basic.v
 structured.v
