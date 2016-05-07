@@ -3,8 +3,8 @@ the the most important notions and results covered in each file.
 
 * Preliminaries
 
-This has been tested with Coq version 8.4pl5 and uses the Ssreflect
-and MathComp libraries, both in version 1.5.
+This has been tested with Coq version 8.5 and uses the Ssreflect
+and MathComp libraries, both in version 1.6.
 
 To compile, just hit "make".
 
