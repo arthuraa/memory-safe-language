@@ -1,47 +1,13 @@
-This file summarizes the structure of our development, highlighting
-the the most important notions and results covered in each file.
+* Compiling
 
-* Preliminaries
+Requirements:
+- Coq 8.5
+- MathComp 1.6
+- CoqUtils (https://github.com/arthuraa/coq-utils)
 
-This has been tested with Coq version 8.5 and uses the Ssreflect
-and MathComp libraries, both in version 1.6.
-
-To compile, just hit "make".
+To compile just hit "make"
 
 * Files
-
-** coq-utils
-
-CoqUtils, as its name suggests, is a basic library of Coq utilities
-based on the Ssreflect and MathComp libraries. Most of it is of
-general interest, not being particularly relevant to the present
-development. The exception is the nominal.v file, which is a
-formalization of the theory of nominal sets that we used for the rest
-of our development.
-
-That formalization departs from the way the theory was presented in
-the review of our paper in a few aspects. In particular:
-
-- A nominal set is defined by a Coq structure (in the Ssreflect
-  class-and-mixin style) that is assumed to have a decidable total
-  order relation. Furthermore, we assume that the support of an
-  element can be effectively computed with a function (function
-  "names" in the formalization).
-
-- To avoid using extra axioms (namely, functional extensionality) and
-  violating the above requirements, we deal with equivariant functions
-  and functions with finite support in an ad-hoc way: we do not endow
-  them with nominal set structures as defined above.
-
-- We do not formalize the single-variable binding functor, only the
-  free restriction algebra one (which we call, perhaps confusingly,
-  "bound" in that file). The reason for that is that in our main
-  development we define the restriction operator nu (called "new" in
-  the development) as taking a finitely supported function as an
-  argument instead of an element with a single variable. This
-  potentially complicates a few constructions, but it allows us to use
-  Coq binders when describing heaps with bound atoms, which makes the
-  syntax a bit nicer.
 
 ** basics.v
 
