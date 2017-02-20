@@ -408,6 +408,50 @@ Fixpoint vars_c c :=
   | While e c => vars_e e :|: vars_c c
   end.
 
+(** Potentially modified variables in a command. *)
+
+Fixpoint mod_vars_c c :=
+  match c with
+  | Assn x _   => fset1 x
+  | Load x _   => fset1 x
+  | Store _ _  => fset0
+  | Alloc x _  => fset1 x
+  | Free _     => fset0
+  | Skip       => fset0
+  | Seq c1 c2  => mod_vars_c c1 :|: mod_vars_c c2
+  | If _ c1 c2 => mod_vars_c c1 :|: mod_vars_c c2
+  | While _ c  => mod_vars_c c
+  end.
+
+Lemma mod_vars_cP b s s' c x k :
+  eval_com (basic_sem b) s c k = Done s' ->
+  x \notin mod_vars_c c ->
+  s'.1 x = s.1 x.
+Proof.
+elim: k s s' c=> [|k IH] //= [ls h] s'.
+case=> [x' e|x' e|e e'|x' e|e| |c1 c2|e c1 c2|e c] /=; rewrite 1?in_fset1.
+- by move=> [<-] {s'}; rewrite setmE => /negbTE ->.
+- case: eval_expr=> // p.
+  case: getm=> //= v [<-] {s'}.
+  by rewrite setmE => /negbTE ->.
+- case: eval_expr=> // p.
+  by case: updm=> //= h' [<-] {s'} _.
+- case: eval_expr=> [| [n|] | |] //= [<-] {s'}.
+  by rewrite setmE => /negbTE ->.
+- case: eval_expr=> // p.
+  case: ifP=> // Hp.
+  by case: free_fun => //= h' [<-] {s'}.
+- by move=> [<-].
+- case e1: eval_com => [s''| |] //= e2.
+  rewrite in_fsetU=> /norP [nc1 nc2].
+  by rewrite (IH _ _ _ e2) // (IH _ _ _ e1).
+- rewrite in_fsetU.
+  by case: eval_expr => [[] | | | ] //= he /norP [nc1 nc2];
+  rewrite (IH _ _ _ he).
+- by case: eval_expr=> [[] | | | ] //= he hx;
+  rewrite (IH _ _ _ he) //= fsetUid.
+Qed.
+
 (** Basic lemmas about the semantics *)
 
 Lemma eval_expr_unionm safe ls1 ls2 e :
