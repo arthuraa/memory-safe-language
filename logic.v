@@ -272,23 +272,14 @@ Qed.
 Lemma loadbp i i' vs n :
   loadb (i :-> vs) (i', n) =
   if i' == i then
-    if n is Posz n then nth None [seq Some v | v <- vs] n
+    if n is Posz n then
+      if n < size vs then Some (nth VNil vs n) else None
     else None
   else None.
 Proof.
-rewrite /loadb [blockat]unlock /= {1}/names /= /prod_names /= namesT fsetU0.
+rewrite /loadb namespE /= namesT fsetU0.
 rewrite namesnE mapr_fsE /= 1?fdisjointC ?fdisjoint0 //.
-  rewrite oexposeE mkpartmapfE fdisjoint0.
-  case: eqP=> [->{i'}|ne].
-    case: n=> [n|n] /=.
-      rewrite mem_map=> [|?? [<-]] //; rewrite mem_iota add0n leq0n /=.
-      case: (ifP (n < size vs)) => [lvs|gvs].
-        by rewrite ?(nth_map VNil None _ lvs) //.
-      by rewrite nth_default // size_map leqNgt gvs.
-    rewrite (@ifF _ (_ \in _)) //.
-    by apply/negbTE/mapP=> - [? ?].
-  rewrite (@ifF _ (_ \in _)) //.
-  apply/negbTE/mapP=> - [? ?]; congruence.
+  by rewrite oexposeE fdisjoint0 /= mkblockE /=.
 move=> pm dis /= [ls h] /=.
 rewrite renamemE [rename _ (_, _)]names_disjointE //.
 by rewrite supp_inv /names /= /prod_names /= namesT fsetU0.

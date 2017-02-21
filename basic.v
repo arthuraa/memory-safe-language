@@ -111,11 +111,45 @@ Definition heap := {partmap name * int -> value}.
 
 Implicit Types (ls : locals) (h : heap).
 
-Definition init_block h b n :=
-  unionm (mkpartmapf (fun _ => VNum 0) [seq (b, Posz i) | i <- iota 0 n]) h.
+Definition mkblock (b : name) vs : heap :=
+  uncurrym (setm emptym b
+                 (mkpartmapfp (fun i => if i is Posz n then
+                                          Some (nth VNil vs n)
+                                        else None)
+                              [seq Posz n | n <- iota 0 (size vs)])).
+
+Lemma mkblockE p b vs :
+  mkblock b vs p =
+  if p.1 == b then
+    if p.2 is Posz n then
+      if n < size vs then Some (nth VNil vs n)
+      else None
+    else None
+  else None.
+Proof.
+rewrite /mkblock uncurrymE setmE.
+case: ifP=> // _.
+rewrite mkpartmapfpE.
+case: p.2=> [n|n] /=.
+  rewrite mem_map; last by move=> ?? [->].
+  by rewrite mem_iota /= add0n.
+by case: ifP.
+Qed.
+
+Lemma rename_mkblock pm i vs :
+  rename pm (mkblock i vs) = mkblock (pm i) (rename pm vs).
+Proof.
+apply/eq_partmap=> /= - [i' [n|n]];
+rewrite renamemE renamepE /= !mkblockE (can2_eq (renameKV pm) (renameK pm));
+rewrite renamenE /= ?if_same // size_map.
+case: ifP=> //.
+case: ifP=> //.
+by rewrite -{2}[VNil]/(rename pm VNil) -renames_nth.
+Qed.
 
 Definition alloc_fun ls h n :=
-  locked (let b := fresh (names (ls, h)) in (b, init_block h b n)).
+  locked (let b := fresh (names (ls, h)) in
+          (b, unionm (mkblock b (nseq n (VNum 0))) h)).
 
 Definition free_fun h i :=
   locked
@@ -229,6 +263,11 @@ Lemma renameresE (T : nominalType) pm (r : result T) :
   | Error => Error
   | NotYet => NotYet
   end.
+Proof. by case: r. Qed.
+
+Lemma namesresE (T : nominalType) (r : result T) :
+  names r =
+  if r is Done x then names x else fset0.
 Proof. by case: r. Qed.
 
 Lemma result_of_option_omap T S f x :
@@ -489,19 +528,75 @@ case: safe IH=> //.
 by case: (eval_expr _ _ _)=> [b|n|p|]; rewrite fsub0set.
 Qed.
 
-Lemma names_init_block h i n :
-  fsubset (names (init_block h i n)) (i |: names h).
+Lemma domm_mkblock i vs :
+  domm (mkblock i vs) = fset [seq (i, Posz n) | n <- iota 0 (size vs)].
 Proof.
-rewrite (fsubset_trans (namesm_union _ _)) // fsetSU //.
-apply/fsubsetP=> i'; case/namesmP=> [p v|p v]; rewrite mkpartmapfE;
-case: ifP=> // /mapP [n' Pn'].
-  by move=> -> {p} _; rewrite in_fsetU in_fset0 orbF.
-by move=> _ [<-].
+apply/eqP; rewrite eqEfsubset; apply/andP; split; apply/fsubsetP => /= - [i' n].
+  move=> /dommP [v].
+  rewrite mkblockE /= in_fset.
+  have [-> {i'}|] //= := altP eqP.
+  case: n=> [n|] //=.
+  case: ifP=> [n_vs|] //= [e].
+  apply/mapP; exists n=> //.
+  by rewrite mem_iota.
+rewrite in_fset=> /mapP /= [n'].
+rewrite mem_iota /= add0n => n_vs [-> ->].
+apply/dommP; exists (nth VNil vs n').
+by rewrite mkblockE /= eqxx n_vs.
 Qed.
 
-Lemma init_block_unionm h1 h2 i n :
-  init_block (unionm h1 h2) i n = unionm (init_block h1 i n) h2.
-Proof. by rewrite /init_block unionmA. Qed.
+Lemma names_domm_mkblock i vs :
+  names (domm (mkblock i vs)) = if nilp vs then fset0 else fset1 i.
+Proof.
+case: ifP=> [/nilP ->|nnil_vs].
+  rewrite (_ : mkblock i [::] = emptym) ?domm0 ?namesfs0 //.
+  apply/eq_partmap=> p; rewrite mkblockE /= emptymE.
+  by case: ifP=> //; case: p.2.
+rewrite domm_mkblock names_fset.
+apply/eqP; rewrite eqEfsubset; apply/andP; split; apply/fsubsetP=> i'.
+  case/namessP=> /= [[i'' n] /mapP [n' ?] [-> ?]].
+  by rewrite in_fsetU /= namesT in_fset0 orbF namesnE.
+move=> /fset1P ->.
+apply/namessP; exists (i, Posz 0).
+  apply/mapP; exists 0=> //.
+  rewrite mem_iota /= add0n.
+  by case: vs nnil_vs.
+by rewrite in_fsetU /= namesT in_fset0 orbF namesnE in_fset1 eqxx.
+Qed.
+
+Lemma codomm_mkblock i vs : codomm (mkblock i vs) = fset vs.
+Proof.
+apply/eqP; rewrite eqEfsubset; apply/andP; split; apply/fsubsetP=> v.
+  case/codommP=> /= - [i' n].
+  rewrite mkblockE /=.
+  have [_ {i'}|] //= := altP eqP.
+  case: n=> [n|] //=.
+  case: ifP=> [n_vs|] //= [<-].
+  rewrite in_fset.
+  by apply/mem_nth.
+rewrite in_fset => v_vs.
+apply/codommP.
+exists (i, Posz (index v vs)).
+by rewrite mkblockE /= eqxx index_mem v_vs nth_index.
+Qed.
+
+Lemma names_codomm_mkblock i vs :
+  names (codomm (mkblock i vs)) = names vs.
+Proof. by rewrite codomm_mkblock names_fset. Qed.
+
+Lemma names_mkblock i vs :
+  names (mkblock i vs) = if nilp vs then fset0 else i |: names vs.
+Proof.
+rewrite namesmE names_domm_mkblock names_codomm_mkblock.
+case: vs=> //=.
+by rewrite fset0U namessE.
+Qed.
+
+Lemma names_mkblock_fsubset i vs :
+  fsubset (names (mkblock i vs)) (i |: names vs).
+Proof.
+by rewrite names_mkblock fun_if if_arg fsub0set fsubsetxx if_same.
+Qed.
 
 Lemma fdisjoint_names_domm h1 h2 :
   fdisjoint (names (domm h1)) (names (domm h2)) ->

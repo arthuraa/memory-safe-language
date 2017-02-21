@@ -17,7 +17,7 @@ Section Properties.
 
 Local Open Scope fset_scope.
 
-Notation state := (locals * heap)%type.
+Local Notation state := (locals * heap)%type.
 
 Implicit Type (e : expr) (c : com) (ls : locals) (h : heap)
               (s : state) (π : {fperm name}) (v : value).

@@ -14,7 +14,7 @@ Section Structured.
 Local Open Scope fset_scope.
 Local Open Scope fperm_scope.
 
-Implicit Types (ls : locals) (h : heap).
+Implicit Types (ls : locals) (h : heap) (x : string) (st : locals * heap).
 
 Definition state := {restr locals * heap}.
 
@@ -217,61 +217,30 @@ rewrite /locval renamerE renamefs0 renamepE /= renamem_set.
 by rewrite !renamem_empty renameT.
 Qed.
 
-Lemma blockat_key : unit. Proof. exact: tt. Qed.
-Definition blockat_def (i : name) (vs : seq value) : state :=
-  mask fset0
-       (emptym, mkpartmapf (fun p => nth VNil vs (absz p.2))
-                           [seq (i, Posz n) | n <- iota 0 (size vs)]).
-Definition blockat := locked_with blockat_key blockat_def.
-
-Notation "i :-> vs" := (blockat i vs) (at level 20) : state_scope.
+Notation "i :-> vs" :=
+  (mask fset0 (emptym, mkblock i vs) : state) (at level 20) : state_scope.
 
 Lemma vars_s_blockat i vs : vars_s (i :-> vs) = fset0.
-Proof. by rewrite [blockat]unlock vars_sE domm0. Qed.
+Proof. by rewrite vars_sE domm0. Qed.
 
 Lemma pub_blockat i vs :
   pub (i :-> vs) = if vs is [::] then fset0 else fset1 i.
 Proof.
-rewrite [blockat]unlock /= pubE.
-rewrite (_ : names (domm _) = if vs is [::] then fset0 else fset1 i).
-  case: vs=> [|v vs] /=; by rewrite fsetD0.
-case: vs=> [|v vs].
-  by rewrite domm_mkpartmapf namesfsE /= -fset0E big_nil.
-rewrite domm_mkpartmapf; apply/eqP; rewrite eqEfsubset; apply/andP; split.
-  apply/fsubsetP=> i' /namesfsP [p]; rewrite in_fset.
-  by case: p=> [i'' n] /mapP [n' _ [<- _]]; rewrite in_fsetU in_fset0 orbF.
-rewrite /= namesfsE fset_cons bigcup_fsetU1; apply/fsubsetU/orP; left.
-by apply/fsubsetU/orP; left; rewrite fsubsetxx.
+by rewrite pubE fsetD0 names_domm_mkblock; case: vs.
 Qed.
 
 Lemma names_blockat i vs :
   names (i :-> vs) =
   if nilp vs then fset0 else i |: names vs.
 Proof.
-rewrite [blockat]unlock /=; case: ifPn=> [/nilP -> /=|vs0n].
-  rewrite /blockat_def maskI fsetIUr /= !namesm_empty !fsetI0 fsetU0.
-  rewrite namesrE // fsetD0 namespE /= namesm_empty fset0U namesm_mkpartmapf.
-  by rewrite !namessE /= fset0U.
-rewrite namesrE //= fsetD0 namespE /= namesm_empty fset0U namesm_mkpartmapf.
-congr fsetU.
-  apply/eq_fset=> i'; apply/namessP/fset1P.
-    case=> /= [[i'' n] /mapP [n' _ [-> _]]].
-    by rewrite in_fsetU /= in_fset0 orbF=> /namesnP.
-  move=> -> {i'}; exists (i, 0 : int).
-    by case: vs vs0n=> //= _ vs _; rewrite inE eqxx.
-  by rewrite in_fsetU in_fset1 eqxx.
-congr names; elim: vs {vs0n}=> //= v vs.
-by rewrite (iota_addl 1 0) -!map_comp /= /funcomp /= => ->.
+by rewrite namesrE fsetD0 namespE /= namesm_empty fset0U names_mkblock.
 Qed.
 
 Lemma rename_blockat s i vs :
   rename s (i :-> vs) = s i :-> rename s vs.
 Proof.
-rewrite [blockat]unlock /blockat_def renamerE renamefsE imfset0 renamepE /=.
-rewrite renamem_empty renamem_mkpartmapf /=; congr mask; congr pair.
-apply/eq_partmap=> /= - [i' p].
-rewrite !mkpartmapfE renamesE -map_comp /= renameT renames_nth.
-by rewrite renamevE size_map.
+rewrite renamerE renamefs0; congr mask.
+by rewrite renamepE /= renamem_empty rename_mkblock.
 Qed.
 
 Lemma rename_eval_binop pm b v1 v2 :
@@ -934,15 +903,9 @@ case: c => [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
     rewrite renamevE renamepE /= renameT renamenE renamesE names_disjointE //.
     by rewrite map_id_in // => v /nseqP [-> _].
   + by rewrite namesrE in_fsetD (negbTE ea) andbF.
-  congr hide; rewrite [blockat]unlock /blockat_def /locval.
+  congr hide; rewrite /locval.
   rewrite stateuE /mutfresh ?fdisjoint0 // fset0U unionm0 union0m.
-  rewrite stateuE /mutfresh ?fdisjoint0 //=.
-    rewrite fset0U /init_block -setm_union union0m.
-    congr mask; congr pair; congr unionm.
-    apply/eq_partmap=> /= p; rewrite !mkpartmapfE size_nseq.
-    case: ifP=> // /mapP /= [q].
-    rewrite mem_iota add0n => /andP [_ q_k] -> /=.
-    by rewrite nth_nseq q_k.
+  rewrite stateuE /mutfresh ?fdisjoint0 //= ?fset0U -?setm_union ?union0m //.
   set A' := names _; suffices subA' : fsubset A' (fset1 a).
     apply: fdisjoint_trans; eauto.
     rewrite fdisjointC; apply: fdisjoint_trans; eauto.
@@ -950,12 +913,9 @@ case: c => [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   rewrite {}/A' /namespE fsubUset /=; apply/andP; split.
     apply/fsubset_trans; first exact: namesm_set.
     by rewrite namesm_empty namesT namesvE /= !fset0U fsubsetxx.
-  rewrite namesm_mkpartmapf -map_comp /= size_nseq /funcomp /=.
-  apply/fsubsetP=> a' /fsetUP [] /namessP.
-    move=> [p /mapP [k' _ ->]]; by rewrite namespE /= namesT fsetU0 namesnE.
-  case=> [v /mapP [k']].
-  rewrite mem_iota add0n => /andP [_ k'_k] ->.
-  by rewrite nth_nseq k'_k namesvE in_fset0.
+  move: (names_mkblock_fsubset a (nseq k (VNum 0))).
+  rewrite (_ : names (nseq _ _) = fset0) ?fsetU0 //.
+  by apply/eqP; rewrite -fsubset0; apply/fsubsetP => i /namessP [v /nseqP [->]].
 - exists A; rewrite /restr_free -lock /= maprE.
     case: eval_expr=> //=; try by rewrite orestrE /=.
     move=> p; rewrite orestrE.
@@ -1104,4 +1064,5 @@ End Structured.
 
 Notation "s1 * s2" := (stateu s1 s2) : state_scope.
 Notation "x ::= v" := (locval x v) (at level 20) : state_scope.
-Notation "i :-> vs" := (blockat i vs) (at level 20) : state_scope.
+Notation "i :-> vs" :=
+  (mask fset0 (emptym, mkblock i vs) : state) (at level 20) : state_scope.

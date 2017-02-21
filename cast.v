@@ -115,7 +115,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - (* Alloc *)
   rewrite fsubU1set=> /andP [Px sub] disl dish; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [|[n|]| |] //= [<- <-].
-  rewrite setm_union /alloc_fun /= -lock /= init_block_unionm.
+  rewrite setm_union /alloc_fun /= -lock /= unionmA.
   have dis': fdisjoint (domm h1) (domm h2).
     apply/fdisjoint_names_domm/fdisjointP=> i Pi'.
     by move/fdisjointP: dish; apply; apply/fsetUP; right; apply/fsetUP; left.
@@ -131,11 +131,18 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
     apply/fsubsetP=> i /fsetIP [/namesnP -> {i} /= Pi].
     move: F; rewrite in_fsetU negb_or=> /andP [_] /=.
     by rewrite namesm_union_disjoint // in_fsetU negb_or Pi andbF.
-  apply/fsubsetU/orP; right.
-  apply/(fsubset_trans (fsetSI _ (names_init_block _ _ _)))/fsubsetP.
-  move=> i /fsetIP [/fsetU1P [->|//] I].
-  move: F; rewrite in_fsetU negb_or /= => /andP [_].
-  by rewrite namesm_union_disjoint // in_fsetU I orbT.
+  apply/fsubsetU/orP; right=> /=.
+  move: (fresh _) F => i.
+  rewrite namespE /= (namesm_union_disjoint dis').
+  rewrite in_fsetU negb_or in_fsetU negb_or.
+  case/and3P=> Fl Fh1 Fh2.
+  rewrite namesm_union_disjoint 1?fsetIUl ?fdisjoint_names_domm //.
+    rewrite fsubUset fsubsetIl andbT names_mkblock names_nseq if_same.
+    by rewrite fun_if if_arg fsetU0 fset1I fset0I (negbTE Fh2) if_same fsub0set.
+  rewrite names_domm_mkblock.
+  case: ifP => _; first by rewrite fdisjoint0.
+  rewrite fdisjointC fdisjoints1.
+  by apply: contra Fh1; rewrite in_fsetU => ->.
 - (* Free *)
   move=> sub disl dish; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
