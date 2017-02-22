@@ -538,6 +538,46 @@ rewrite [_ _ (newblock x n)](_ : _ = newblock x n) //.
 by apply/names0P/eqP/names_newblock.
 Qed.
 
+Lemma restr_allocE x e A st i :
+  i \notin names st ->
+  restr_alloc x e (mask A st) =
+  if eval_expr true st.1 e is VNum (Posz n) then
+    Some (mask (i |: A) (setm st.1 x (VPtr (i, Posz 0)),
+                         unionm (mkblock i (nseq n (VNum 0))) st.2))
+  else None.
+Proof.
+rewrite /restr_alloc restr_eval_natE /eval_nat.
+case: eval_expr=> [ |[n|]| | ] i_fresh //=.
+have eA : i |: A = i |: A :\ i.
+  apply/eq_fset=> i'; rewrite 2!in_fsetU1 in_fsetD1.
+  by have [->|] //= := altP eqP.
+have -> : mask A st = mask (A :\ i) st.
+  rewrite -[LHS](@hideD _ i) ?namesrE ?in_fsetD ?(negbTE i_fresh) ?andbF //.
+  rewrite -[RHS](@hideD _ i) ?namesrE ?in_fsetD ?(negbTE i_fresh) ?andbF //.
+  by rewrite !hideE eA.
+rewrite eA.
+have i_fresh' : i \notin A :\ i by rewrite in_fsetD1 eqxx.
+move: (A :\ i) i_fresh' => {A eA} A i_fresh'.
+rewrite /newblock new_stateul; last first.
+  by move=> ???; rewrite rename_newblock_def.
+have {i_fresh} i_fresh : i \notin names (mask A st).
+  by apply: contra i_fresh; rewrite namesrE => /fsetDP [->].
+case: st i_fresh => /= [ls h] i_fresh.
+rewrite fset0U (newE i_fresh).
+  rewrite /newblock_def /locval /= stateuE /mutfresh ?fdisjoint0 //.
+  rewrite unionm0 union0m fset0U stateuE ?fset0U ?hideE //.
+  rewrite /mutfresh fdisjoint0 /= fdisjointC.
+  rewrite -fdisjoints1 fdisjointC in i_fresh'.
+  apply: fdisjoint_trans; try eassumption.
+  rewrite namespE /= names_mkblock names_nseq if_same fsetU0.
+  rewrite fsubUset; apply/andP; split.
+    apply: fsubset_trans; first apply: namesm_set.
+    by rewrite namesm_empty fsetU0 fset0U namesvE fsubsetxx.
+  by case: ifP; rewrite ?fsub0set ?fsubsetxx.
+move=> /= pm dis i'; rewrite rename_stateu rename_newblock_def.
+by congr stateu; rewrite names_disjointE.
+Qed.
+
 Lemma restr_alloc_ok x e s1 s1' s2 :
   fsubset (x |: vars_e e) (vars_s s1) ->
   restr_alloc x e s1 = Some s1' ->
@@ -862,16 +902,16 @@ Proof.
 move=> e; rewrite /new; by rewrite eval_com_hiden e.
 Qed.
 
-Lemma eval_basic_restr A s c n :
+Lemma eval_basic_restr A s c k :
   exists A',
-    eval_com restr_sem (mask A s) c n =
-    match eval_com (basic_sem true) s c n with
+    eval_com restr_sem (mask A s) c k =
+    match eval_com (basic_sem true) s c k with
     | Done s' => Done (mask A' s')
     | Error => Error
     | NotYet => NotYet
     end.
 Proof.
-elim: n A s c => /= [|n IH] A s c; first by exists fset0.
+elim: k A s c => /= [|k IH] A s c; first by exists fset0.
 case: c => [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - by exists A; rewrite /restr_assn maprE /=; last exact: rename_assn.
 - exists A; rewrite /restr_load /= maprE /= ?orestrE.
@@ -886,43 +926,13 @@ case: c => [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   case: eval_expr=> //= p.
   rewrite /updm renamemE renameK; case: getm=> //= v.
   by rewrite -rename_eval_expr -renamem_set.
-- rewrite maskI {IH} /restr_alloc restr_eval_natE /eval_nat.
-  move: (_ :&: _) (fsubsetIr A (names s)) => /= {A} A subA.
+- case: s=> [ls h]; rewrite (restr_allocE _ _ _ (freshP (names (ls, h)))) /=.
   case: eval_expr=> //; try by exists fset0.
-  case=> [k|] //=; rewrite /alloc_fun -lock.
-  case: s subA=> /= ls h subA; move: (fresh _) (freshP (names (ls, h)))=> a ea.
-  exists (a |: A); congr Done.
-  rewrite /newblock /newblock_def new_stateul ?fset0U; last first.
-    move=> {a ea} /= pm _ a; rewrite rename_stateu rename_locval rename_blockat.
-    rewrite renamevE renamepE /= !renameT renamenE renamesE map_id_in //.
-    by move=> v /nseqP [-> _].
-  rewrite -hideE.
-  rewrite (@newE _ _ _ a); first last.
-  + move=> pm e_pm {a ea} /= a.
-    rewrite !rename_stateu rename_locval rename_blockat renamenE.
-    rewrite renamevE renamepE /= renameT renamenE renamesE names_disjointE //.
-    by rewrite map_id_in // => v /nseqP [-> _].
-  + by rewrite namesrE in_fsetD (negbTE ea) andbF.
-  congr hide; rewrite /locval.
-  rewrite stateuE /mutfresh ?fdisjoint0 // fset0U unionm0 union0m.
-  rewrite stateuE /mutfresh ?fdisjoint0 //= ?fset0U -?setm_union ?union0m //.
-  set A' := names _; suffices subA' : fsubset A' (fset1 a).
-    apply: fdisjoint_trans; eauto.
-    rewrite fdisjointC; apply: fdisjoint_trans; eauto.
-    by rewrite fdisjointC fdisjoints1.
-  rewrite {}/A' /namespE fsubUset /=; apply/andP; split.
-    apply/fsubset_trans; first exact: namesm_set.
-    by rewrite namesm_empty namesT namesvE /= !fset0U fsubsetxx.
-  move: (names_mkblock_fsubset a (nseq k (VNum 0))).
-  rewrite (_ : names (nseq _ _) = fset0) ?fsetU0 //.
-  by apply/eqP; rewrite -fsubset0; apply/fsubsetP => i /namessP [v /nseqP [->]].
-- exists A; rewrite /restr_free -lock /= maprE.
-    case: eval_expr=> //=; try by rewrite orestrE /=.
-    move=> p; rewrite orestrE.
-    by case: ifP => // _; case: free_fun=> //=.
-  move=> pm s'. rewrite -rename_eval_expr.
-  case: eval_expr=> //= p; rewrite -rename_free_fun renameT.
-  by case: ifP => // _; case: free_fun.
+  case=> [k'|] //=; rewrite /alloc_fun -lock.
+  by move: (fresh _)=> i /=; exists (i |: A).
+- exists A; rewrite restr_freeE /=.
+  case: eval_expr=> //=; try by rewrite orestrE /=.
+  by move=> p; case: ifP => // _; case: free_fun=> //=; eauto.
 - by exists A.
 - have [A' ->] := IH A s c1.
   case: eval_com; try by exists fset0.
@@ -933,6 +943,54 @@ case: c => [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 rewrite restr_eval_condE.
 case: eval_expr; try by exists fset0.
 by case; apply: IH.
+Qed.
+
+Lemma mod_vars_cP s s' c x k :
+  eval_com restr_sem s c k = Done s' ->
+  x \notin mod_vars_c c ->
+  mapr (fun st => st.1 x) s' = mapr (fun st => st.1 x) s.
+Proof.
+set f := fun st => st.1 x.
+have eq_f : equivariant f.
+  by move=> ? [??]; rewrite renamepE /= /f /= renamemE renameT.
+elim: k s c s' => /= [|k IH] s c s' //.
+case/(restrP fset0): s=> /= A [ls h] _ _.
+case: c => [x' e|x' e|e e'|x' e|e| |c1 c2|e c1 c2|e c] //=;
+rewrite ?in_fset1.
+- move=> [<-].
+  by rewrite restr_assnE !maprE // /f /= setmE => /negbTE ->.
+- rewrite restr_loadE /=.
+  case: eval_expr=> //= p.
+  case: getm=> //= v [<-].
+  by rewrite !maprE // /f /= setmE => /negbTE ->.
+- rewrite restr_storeE /=.
+  case: eval_expr=> //= p.
+  case: updm=> //= h' [<-].
+  by rewrite !maprE // /f /= setmE.
+- rewrite (restr_allocE _ _ _ (freshP _)) /=.
+  case: eval_expr=> [|[n|]| |] //= [<-].
+  rewrite !maprE /f //= setmE => /negbTE ->.
+  rewrite -hideE hideD // namesrE.
+  case get: (ls x) => [v|] //=; last by rewrite fset0D in_fset0.
+  apply: contra (freshP (names (ls, h))) => /fsetDP [i_in _].
+  apply/fsetUP; left; apply/namesmP.
+  by apply/@PMFreeNamesVal; eassumption.
+- rewrite restr_freeE /=.
+  case: eval_expr=> // p.
+  case: ifP => // _.
+  case: free_fun => //= h' [<-].
+  by rewrite !maprE //.
+- by move=> [<-] _.
+- case ev1: eval_com=> [s''| |] //= ev2.
+  rewrite in_fsetU => /norP [nin1 nin2].
+  by rewrite -(IH _ _ _ ev1 nin1) -(IH _ _ _ ev2 nin2).
+- rewrite restr_eval_condE /= in_fsetU.
+  case: eval_expr=> // b ev /norP [nin1 nin2].
+  by apply: IH; eauto; case: (b).
+- rewrite restr_eval_condE /=.
+  case: eval_expr=> // b ev nin.
+  apply: IH; eauto.
+  by case: (b); rewrite ?in_fset0 //= fsetUid.
 Qed.
 
 Theorem frame_ok s1 s1' s2 c k :
