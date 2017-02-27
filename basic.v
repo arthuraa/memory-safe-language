@@ -27,6 +27,7 @@ Inductive binop : Type :=
 
 Inductive expr :=
 | Var of string
+| Bool of bool
 | Num of int
 | Binop of binop & expr & expr
 | Neg of expr
@@ -186,6 +187,7 @@ block identifier to an integer. *)
 Fixpoint eval_expr safe ls e :=
   match e with
   | Var x => odflt VNil (ls x)
+  | Bool b => VBool b
   | Num n => VNum n
   | Binop b e1 e2 => eval_binop b (eval_expr safe ls e1) (eval_expr safe ls e2)
   | ENil => VNil
@@ -427,6 +429,7 @@ Definition basic_sem safe : sem (locals * heap) := {|
 Fixpoint vars_e e :=
   match e with
   | Var x => fset1 x
+  | Bool _ => fset0
   | Num _ => fset0
   | Binop _ e1 e2 => vars_e e1 :|: vars_e e2
   | ENil => fset0
@@ -498,7 +501,7 @@ Lemma eval_expr_unionm safe ls1 ls2 e :
   eval_expr safe (unionm ls1 ls2) e =
   eval_expr safe ls1 e.
 Proof.
-elim: e => [x|n|b e1 IH1 e2 IH2|e IH| |e IH] //=.
+elim: e => [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH] //=.
 - by rewrite fsub1set unionmE => /dommP [v ->].
 - by rewrite fsubUset=> /andP [/IH1 {IH1} -> /IH2 {IH2} ->].
 - by case: safe IH=> // IH sub; rewrite IH.
@@ -517,7 +520,7 @@ Qed.
 Lemma eval_expr_names safe ls e :
   fsubset (names (eval_expr safe ls e)) (names ls).
 Proof.
-elim: e=> [x|n|b e1 IH1 e2 IH2|e IH| |e IH] //=; try by rewrite fsub0set.
+elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH] //=; try by rewrite fsub0set.
 - case get_x: (ls x) => [[b|n|p|]|] //=; try by rewrite fsub0set.
   apply/fsubsetP=> i; rewrite namesvE => /fset1P -> {i}.
   apply/namesmP; eapply PMFreeNamesVal; eauto.
