@@ -578,7 +578,7 @@ move=> /= pm dis i'; rewrite rename_stateu rename_newblock_def.
 by congr stateu; rewrite names_disjointE.
 Qed.
 
-Lemma restr_alloc_ok x e s1 s1' s2 :
+Lemma restr_alloc_frame_ok x e s1 s1' s2 :
   fsubset (x |: vars_e e) (vars_s s1) ->
   restr_alloc x e s1 = Some s1' ->
   restr_alloc x e (s1 * s2) = Some (s1' * s2).
@@ -590,7 +590,7 @@ rewrite eval_expr_unionm //; case: eval_expr=> [|[n|]| |] // [<-].
 by rewrite stateuA.
 Qed.
 
-Lemma restr_alloc_error x e s1 s2 :
+Lemma restr_alloc_frame_error x e s1 s2 :
   fsubset (x |: vars_e e) (vars_s s1) ->
   restr_alloc x e s1 = None ->
   restr_alloc x e (s1 * s2) = None.
@@ -640,7 +640,7 @@ apply: equivariant_comp; first exact: rename_orestr.
 by apply/rename_mapr/rename_free.
 Qed.
 
-Lemma restr_free_ok e s1 s1' s2 :
+Lemma restr_free_frame_ok e s1 s1' s2 :
   fsubset (vars_e e) (vars_s s1) ->
   fdisjoint (pub s1) (pub s2) ->
   restr_free e s1 = Some s1' ->
@@ -677,7 +677,7 @@ apply/(mutfreshS mf); last exact: fsubsetxx.
 by apply/fsetUS/namesm_filter.
 Qed.
 
-Lemma restr_free_error e s1 s2 :
+Lemma restr_free_frame_error e s1 s2 :
   fsubset (vars_e e) (vars_s s1) ->
   fdisjoint (names s1) (pub s2) ->
   restr_free e s1 = None ->
@@ -1007,9 +1007,9 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - move=> sub _ /result_of_optionD ?.
   by apply/result_of_optionD/restr_store_frame_ok.
 - move=> sub _ /result_of_optionD ?.
-  by apply/result_of_optionD/restr_alloc_ok.
+  by apply/result_of_optionD/restr_alloc_frame_ok.
 - move=> sub dis /result_of_optionD ?.
-  by apply/result_of_optionD/restr_free_ok.
+  by apply/result_of_optionD/restr_free_frame_ok.
 - by move=> _ _ [<-].
 - rewrite fsubUset=> /andP [sub1 sub2] dis.
   case eval_c1: eval_com=> [s1''| |] //=.
@@ -1072,9 +1072,9 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - move=> sub dis; case Ps: restr_store=> [s1'|] //= _.
   by rewrite (restr_store_frame_error sub dis Ps).
 - move=> sub dis; case Pa: restr_alloc=> [s1'|] //= _.
-  by rewrite (restr_alloc_error _ sub Pa).
+  by rewrite (restr_alloc_frame_error _ sub Pa).
 - move=> sub dis; case Pa: restr_free=> [s1'|] //= _.
-  by rewrite (restr_free_error sub dis Pa).
+  by rewrite (restr_free_frame_error sub dis Pa).
 - rewrite fsubUset=> /andP [sub1 sub2] dis.
   case eval_c1: eval_com=> [s1''| |] //=.
     rewrite (frame_ok sub1 _ eval_c1).
