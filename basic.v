@@ -25,6 +25,40 @@ Canonical int_trivialNominalType :=
 Inductive binop : Type :=
 | Add | Mul | Sub | Eq | Leq | And | Or.
 
+Definition nat_of_binop b :=
+  match b with
+  | Add => 0
+  | Mul => 1
+  | Sub => 2
+  | Eq  => 3
+  | Leq => 4
+  | And => 5
+  | Or  => 6
+  end.
+
+Definition binop_of_nat n :=
+  match n with
+  | 0 => Add
+  | 1 => Mul
+  | 2 => Sub
+  | 3 => Eq
+  | 4 => Leq
+  | 5 => And
+  | _ => Or
+  end.
+
+Lemma nat_of_binopK : cancel nat_of_binop binop_of_nat.
+Proof. by case. Qed.
+
+Definition binop_eqMixin := CanEqMixin nat_of_binopK.
+Canonical binop_eqType := Eval hnf in EqType binop binop_eqMixin.
+Definition binop_choiceMixin := CanChoiceMixin nat_of_binopK.
+Canonical binop_choiceType := Eval hnf in ChoiceType binop binop_choiceMixin.
+Definition binop_countMixin := CanCountMixin nat_of_binopK.
+Canonical binop_countType := Eval hnf in CountType binop binop_countMixin.
+Definition binop_ordMixin := CanOrdMixin nat_of_binopK.
+Canonical binop_ordType := Eval hnf in OrdType binop binop_ordMixin.
+
 Inductive expr :=
 | Var of string
 | Bool of bool
@@ -33,6 +67,48 @@ Inductive expr :=
 | Neg of expr
 | ENil
 | Cast of expr.
+
+Fixpoint tree_of_expr e :=
+  match e with
+  | Var x => GenTree.Node 0 [:: GenTree.Leaf (pickle x)]
+  | Bool b => GenTree.Node 1 [:: GenTree.Leaf (pickle b)]
+  | Num n => GenTree.Node 2 [:: GenTree.Leaf (pickle n)]
+  | Binop b e1 e2 => GenTree.Node 3 [:: GenTree.Leaf (pickle b);
+                                        tree_of_expr e1; tree_of_expr e2]
+  | Neg e => GenTree.Node 4 [:: tree_of_expr e]
+  | ENil => GenTree.Node 5 [::]
+  | Cast e => GenTree.Node 6 [:: tree_of_expr e]
+  end.
+
+Fixpoint expr_of_tree t :=
+  match t with
+  | GenTree.Node 0 [:: GenTree.Leaf x & _] => Var (odflt String.EmptyString (unpickle x))
+  | GenTree.Node 1 [:: GenTree.Leaf b & _] => Bool (odflt true (unpickle b))
+  | GenTree.Node 2 [:: GenTree.Leaf n & _ ] => Num (odflt (0 : int) (unpickle n))
+  | GenTree.Node 3 [:: GenTree.Leaf b, e1, e2 & _ ] =>
+    Binop (odflt Add (unpickle b)) (expr_of_tree e1) (expr_of_tree e2)
+  | GenTree.Node 4 [:: e & _] => Neg (expr_of_tree e)
+  | GenTree.Node 5 _ => ENil
+  | GenTree.Node 6 [:: e & _] => Cast (expr_of_tree e)
+  | _ => Var String.EmptyString
+  end.
+
+Lemma tree_of_exprK : cancel tree_of_expr expr_of_tree.
+Proof.
+rewrite /expr_of_tree [@unpickle]lock.
+by elim=> /= [x|b|n|b e1 -> e2 ->|e -> | |e ->] //; rewrite -lock pickleK.
+Qed.
+
+Definition expr_eqMixin := CanEqMixin tree_of_exprK.
+Canonical expr_eqType := Eval hnf in EqType expr expr_eqMixin.
+Definition expr_choiceMixin := CanChoiceMixin tree_of_exprK.
+Canonical expr_choiceType := Eval hnf in ChoiceType expr expr_choiceMixin.
+Definition expr_countMixin := CanCountMixin tree_of_exprK.
+Canonical expr_countType := Eval hnf in CountType expr expr_countMixin.
+Definition expr_ordMixin := PcanOrdMixin (@pickleK expr_countType).
+Canonical expr_ordType := Eval hnf in OrdType expr expr_ordMixin.
+Canonical expr_nominalType := Eval hnf in [nominalType for expr by //].
+Canonical expr_trivialNominalType := Eval hnf in [trivialNominalType for expr].
 
 Inductive com : Type :=
 | Assn of string & expr
@@ -45,9 +121,47 @@ Inductive com : Type :=
 | If of expr & com & com
 | While of expr & com.
 
-(** Type of pointers. [name] corresponds to an atom, in the nominal
-set sense. *)
-Definition ptr : Type := (name * int)%type.
+Fixpoint tree_of_com c :=
+  match c with
+  | Assn x e => GenTree.Node 0 [:: GenTree.Leaf (pickle x); GenTree.Leaf (pickle e)]
+  | Load x e => GenTree.Node 1 [:: GenTree.Leaf (pickle x); GenTree.Leaf (pickle e)]
+  | Store e1 e2 => GenTree.Node 2 [:: GenTree.Leaf (pickle e1); GenTree.Leaf (pickle e2)]
+  | Alloc x e => GenTree.Node 3 [:: GenTree.Leaf (pickle x); GenTree.Leaf (pickle e)]
+  | Free e => GenTree.Node 4 [:: GenTree.Leaf (pickle e)]
+  | Skip => GenTree.Node 5 [::]
+  | Seq c1 c2 => GenTree.Node 6 [:: tree_of_com c1; tree_of_com c2]
+  | If e c1 c2 => GenTree.Node 7 [:: GenTree.Leaf (pickle e);
+                                     tree_of_com c1;
+                                     tree_of_com c2]
+  | While e c => GenTree.Node 8 [:: GenTree.Leaf (pickle e); tree_of_com c]
+  end.
+
+(* FIXME: Do something about this later. *)
+Axiom com_of_tree : GenTree.tree nat -> com.
+Axiom tree_of_comK : cancel tree_of_com com_of_tree.
+
+Definition com_eqMixin := CanEqMixin tree_of_comK.
+Canonical com_eqType := Eval hnf in EqType com com_eqMixin.
+Definition com_choiceMixin := CanChoiceMixin tree_of_comK.
+Canonical com_choiceType := Eval hnf in ChoiceType com com_choiceMixin.
+Definition com_countMixin := CanCountMixin tree_of_comK.
+Canonical com_countType := Eval hnf in CountType com com_countMixin.
+Definition com_ordMixin := PcanOrdMixin (@pickleK com_countType).
+Canonical com_ordType := Eval hnf in OrdType com com_ordMixin.
+Canonical com_nominalType := Eval hnf in [nominalType for com by //].
+Canonical com_trivialNominalType := Eval hnf in [trivialNominalType for com].
+
+(** Type of pointers. [name] corresponds to an atom, in the nominal set
+    sense. *)
+Definition ptr := (name * int)%type.
+
+(* FIXME: If we don't declare these, then many lemmas on partial maps do not
+   work when applied to heaps.  The file structured.v contains some examples. *)
+
+Canonical ptr_eqType := Eval hnf in [eqType of ptr].
+Canonical ptr_choiceType := Eval hnf in [choiceType of ptr].
+Canonical ptr_ordType := Eval hnf in [ordType of ptr].
+Canonical ptr_nominalType := Eval hnf in [nominalType of ptr].
 
 Inductive value :=
 | VBool of bool
@@ -107,10 +221,22 @@ rewrite /names /= /bij_names /=; do ![rewrite /names /=].
 by rewrite /prod_names fsetU0.
 Qed.
 
-Definition locals := {partmap string -> value}.
-Definition heap := {partmap name * int -> value}.
+Global Instance VBool_eqvar : {eqvar VBool}.
+Proof. by move=> s b _ <-. Qed.
 
-Implicit Types (ls : locals) (h : heap).
+Global Instance VNum_eqvar : {eqvar VNum}.
+Proof. by move=> s n _ <-. Qed.
+
+Global Instance VPtr_eqvar : {eqvar VPtr}.
+Proof. by move=> s p _ <-; finsupp. Qed.
+
+Global Instance VNil_eqvar : {eqvar VNil}.
+Proof. by []. Qed.
+
+Notation locals := {partmap string -> value}.
+Notation heap := {partmap ptr -> value}.
+
+Implicit Types (ls : locals) (h : heap) (s : locals * heap).
 
 Definition mkblock (b : name) vs : heap :=
   uncurrym (setm emptym b
@@ -129,34 +255,20 @@ Lemma mkblockE p b vs :
   else None.
 Proof.
 rewrite /mkblock uncurrymE setmE.
-case: ifP=> // _.
-rewrite mkpartmapfpE.
+case: ifP=> //= _; rewrite mkpartmapfpE.
 case: p.2=> [n|n] /=.
   rewrite mem_map; last by move=> ?? [->].
   by rewrite mem_iota /= add0n.
 by case: ifP.
 Qed.
 
-Lemma rename_mkblock pm i vs :
-  rename pm (mkblock i vs) = mkblock (pm i) (rename pm vs).
+Global Instance mkblock_eqvar : {eqvar mkblock}.
 Proof.
-apply/eq_partmap=> /= - [i' [n|n]];
-rewrite renamemE renamepE /= !mkblockE (can2_eq (renameKV pm) (renameK pm));
-rewrite renamenE /= ?if_same // size_map.
-case: ifP=> //.
-case: ifP=> //.
-by rewrite -{2}[VNil]/(rename pm VNil) -renames_nth.
+move=> s i _ <- vs _ <-.
+eapply getm_nomR => - [i' [n|n]] _ <-; rewrite !mkblockE /=; last by finsupp.
+(* FIXME: All this rewriting should not be needed *)
+rewrite -[size (rename s vs)]size_eqvar renameT; finsupp.
 Qed.
-
-Definition alloc_fun ls h n :=
-  locked (let b := fresh (names (ls, h)) in
-          (b, unionm (mkblock b (nseq n (VNum 0))) h)).
-
-Definition free_fun h i :=
-  locked
-  (if i \in domm (currym h) then
-     Some (filterm (fun p _ => p.1 != i) h)
-   else None).
 
 Definition eval_binop b v1 v2 :=
   match b, v1, v2 with
@@ -178,26 +290,25 @@ Definition eval_binop b v1 v2 :=
   | Or, _, _ => VNil
   end%R.
 
-(** Function [eval_expr] computes the value of an expression [e] given
-a local store [ls]. It takes an additional argument [safe] which
-determines how the cast operator is interpreted: when [safe = true],
-cast is just the identity; when [safe = false], cast converts the
-block identifier to an integer. *)
+(** Function [eval_expr] computes the value of an expression [e] given a local
+store [ls]. It takes an additional argument [cast] which determines how the cast
+operator is interpreted: when [cast = true], cast is just the identity; when
+[cast = false], cast converts the block identifier to an integer. *)
 
-Fixpoint eval_expr safe ls e :=
+Fixpoint eval_expr cast e ls :=
   match e with
   | Var x => odflt VNil (ls x)
   | Bool b => VBool b
   | Num n => VNum n
-  | Binop b e1 e2 => eval_binop b (eval_expr safe ls e1) (eval_expr safe ls e2)
+  | Binop b e1 e2 => eval_binop b (eval_expr cast e1 ls) (eval_expr cast e2 ls)
   | ENil => VNil
   | Neg e =>
-    if eval_expr safe ls e is VBool b then VBool (~~ b)
+    if eval_expr cast e ls is VBool b then VBool (~~ b)
     else VNil
   | Cast e =>
-    let v := eval_expr safe ls e in
-    if safe then v
-    else if eval_expr safe ls e is VPtr p then VNum (val p.1) else VNil
+    let v := eval_expr cast e ls in
+    if cast then v
+    else if eval_expr cast e ls is VPtr p then VNum (val p.1) else VNil
   end.
 
 Section Result.
@@ -258,7 +369,14 @@ Definition result_nominalMixin (T : nominalType) :=
 Canonical result_nominalType (T : nominalType) :=
   Eval hnf in NominalType (result T) (result_nominalMixin T).
 
-Lemma renameresE (T : nominalType) pm (r : result T) :
+Section Nominal.
+
+Variable T : nominalType.
+
+Global Instance Done_eqvar : {eqvar @Done T}.
+Proof. by move=> s x _ <-. Qed.
+
+Lemma renameresE pm (r : result T) :
   rename pm r =
   match r with
   | Done x => Done (rename pm x)
@@ -267,162 +385,117 @@ Lemma renameresE (T : nominalType) pm (r : result T) :
   end.
 Proof. by case: r. Qed.
 
-Lemma namesresE (T : nominalType) (r : result T) :
-  names r =
-  if r is Done x then names x else fset0.
+Lemma namesresE (r : result T) :
+  names r = if r is Done x then names x else fset0.
 Proof. by case: r. Qed.
 
-Lemma result_of_option_omap T S f x :
-  result_of_option (@omap T S f x) =
-  match result_of_option x with
-  | Done x => Done (f x)
+End Nominal.
+
+Section Restriction.
+
+Variable T : restrType.
+
+Definition hide_result A (r : result T) :=
+  match r with
+  | Done x => Done (hide A x)
   | Error => Error
   | NotYet => NotYet
   end.
-Proof. by case: x. Qed.
 
-(** Parametric semantics for our language. The [sem] record lists the
-basic primitives we need to define the semantics over some type [T],
-which are combined by the [eval_com] function below to compute the
-effect of a command on a piece of state. *)
+Lemma hide_result_law : Restriction.law hide_result.
+Proof.
+rewrite /hide_result; constructor.
+- move=> s A _ <- [x| |] _ <- //=; finsupp.
+- by move=> A [x| |] //; rewrite hideI.
+- by move=> ?? [x| |] //; rewrite hideU.
+- by move=> [x| |] //; rewrite hide0.
+by move=> ? [x| |] /=; rewrite ?hideP ?fdisjoints0.
+Qed.
 
-CoInductive sem T := Sem {
-  assn : string -> expr -> T -> T;
-  load : string -> expr -> T -> option T;
-  store : expr -> expr -> T -> option T;
-  alloc : string -> expr -> T -> option T;
-  free : expr -> T -> option T;
-  eval_cond : expr -> T -> option bool
-}.
+Definition result_restrMixin := RestrMixin hide_result_law.
+Canonical result_restrType := RestrType (result T) result_restrMixin.
 
-Fixpoint eval_com T (S : sem T) s c k :=
+End Restriction.
+
+Fixpoint eval_com cast c s k : result (locals * heap) :=
   if k is S k' then
     match c with
-    | Assn x e => Done (assn S x e s)
+    | Assn x e =>
+      Done (setm s.1 x (eval_expr cast e s.1), s.2)
 
-    | Load x e => result_of_option (load S x e s)
+    | Load x e =>
+      if eval_expr cast e s.1 is VPtr p then
+        if s.2 p is Some v then Done (setm s.1 x v, s.2)
+        else Error
+      else Error
 
-    | Store e e' => result_of_option (store S e e' s)
+    | Store e e' =>
+      if eval_expr cast e s.1 is VPtr p then
+        if updm s.2 p (eval_expr cast e' s.1) is Some h' then Done (s.1, h')
+        else Error
+      else Error
 
-    | Alloc x e => result_of_option (alloc S x e s)
+    | Alloc x e =>
+      if eval_expr cast e s.1 is VNum (Posz n) then
+        Done (let i := fresh (names s) in
+              (setm s.1 x (VPtr (i, 0 : int)),
+               unionm (mkblock i (nseq n (VNum 0))) s.2))
+      else Error
 
-    | Free e => result_of_option (free S e s)
+    | Free e =>
+      if eval_expr cast e s.1 is VPtr p then
+        if p.2 == 0 then
+          if p.1 \in domm ((@currym _ _ _ : heap -> _) s.2) then
+            Done (s.1, filterm (fun (p' : ptr) _ => p'.1 != p.1) s.2)
+          else Error
+        else Error
+      else Error
 
     | Skip => Done s
 
     | Seq c1 c2 =>
-      let r1 := eval_com S s c1 k' in
-      if r1 is Done s' then
-        eval_com S s' c2 k'
-      else r1
+      match eval_com cast c1 s k' with
+      | Done s' => eval_com cast c2 s' k'
+      | Error => Error
+      | NotYet => NotYet
+      end
 
     | If e ct ce =>
-      if eval_cond S e s is Some b then
-        eval_com S s (if b then ct else ce) k'
+      if eval_expr cast e s.1 is VBool b then
+        eval_com cast (if b then ct else ce) s k'
       else Error
 
     | While e c =>
-      if eval_cond S e s is Some b then
-        eval_com S s (if b then Seq c (While e c) else Skip) k'
+      if eval_expr cast e s.1 is VBool b then
+        eval_com cast (if b then Seq c (While e c) else Skip) s k'
       else Error
     end
   else NotYet.
 
-Section Consistency.
-
-Variable T : eqType.
+Section Monotonicity.
 
 (** The semantics defined as a function is consistent, in the sense
 that increasing the maximum number of steps it can run for can only
 cause it to produce a better result. *)
 
-Definition refine_result (r1 r2 : result T) :=
+Definition refine_result (T : eqType) (r1 r2 : result T) :=
   (r1 == NotYet) || (r1 == r2).
 
-Variable S : sem T.
-
-Lemma eval_com_leq s c k k' :
+Lemma eval_com_leq cast s c k k' :
   k <= k' ->
-  refine_result (eval_com S s c k) (eval_com S s c k').
+  refine_result (eval_com cast c s k) (eval_com cast c s k').
 Proof.
 move=> Pk; elim: k' k Pk s c => [|k' IH] [|k] // /IH {IH} IH s.
 rewrite /refine_result.
 case=> [x e|x e|e e'|x e|e| |c1 c2|e ct ce|e c] /=; try by rewrite eqxx ?orbT.
 - case/orP: (IH s c1) => [/eqP -> //|/eqP ->].
-  case: (eval_com _ _ c1 _) => [s'| |] //=.
+  case: (eval_com _ c1 _ _) => [s'| |] //=.
   by eauto.
-- by case: (eval_cond S e s) => [b|] //=; eauto.
-by case: (eval_cond S e s) => [b|] //=; eauto.
+- by case: eval_expr=> //= b; eauto.
+by case: eval_expr=> //= b; eauto.
 Qed.
 
-Lemma eval_com_loop s c k k' :
-  k <= k' ->
-  eval_com S s c k' = NotYet ->
-  eval_com S s c k  = NotYet.
-Proof.
-move=> lkk' ev; move: (eval_com_leq s c lkk').
-by rewrite ev /refine_result orbb=> /eqP.
-Qed.
-
-Lemma eval_com_error s c k k' :
-  eval_com S s c k' = Error ->
-  refine_result (eval_com S s c k) Error.
-Proof.
-move=> ev.
-move: (eval_com_leq s c (leq_maxl k k')).
-move: (eval_com_leq s c (leq_maxr k k')).
-by rewrite ev /refine_result /= => /eqP <-.
-Qed.
-
-Lemma eval_com_ok s c s' k k' :
-  eval_com S s c k' = Done s' ->
-  refine_result (eval_com S s c k) (Done s').
-Proof.
-move=> ev.
-move: (eval_com_leq s c (leq_maxl k k')).
-move: (eval_com_leq s c (leq_maxr k k')).
-by rewrite ev /refine_result /= => /eqP <-.
-Qed.
-
-End Consistency.
-
-(** Basic, unstructured semantics for our language. *)
-
-Definition basic_sem safe : sem (locals * heap) := {|
-  assn x e s :=
-    (setm s.1 x (eval_expr safe s.1 e), s.2);
-
-  load x e := fun s : locals * heap =>
-    if eval_expr safe s.1 e is VPtr p then
-      if s.2 p is Some v then Some (setm s.1 x v, s.2)
-      else None
-    else None;
-
-  store e e' s :=
-    if eval_expr safe s.1 e is VPtr p then
-      if updm s.2 p (eval_expr safe s.1 e') is Some h' then Some (s.1, h')
-      else None
-    else None;
-
-  alloc x e s :=
-    if eval_expr safe s.1 e is VNum (Posz n) then
-      let res := alloc_fun s.1 s.2 n in
-      Some (setm s.1 x (VPtr (res.1, 0 : int)), res.2)
-    else None;
-
-  free e s :=
-    if eval_expr safe s.1 e is VPtr p then
-      if p.2 == 0 then
-        if free_fun s.2 p.1 is Some h' then Some (s.1, h')
-        else None
-      else None
-    else None;
-
-  eval_cond e s :=
-    if eval_expr safe s.1 e is VBool b then Some b
-    else None
-
-|}.
+End Monotonicity.
 
 (** Free variables that occur in a command or expression. *)
 
@@ -465,8 +538,8 @@ Fixpoint mod_vars_c c :=
   | While _ c  => mod_vars_c c
   end.
 
-Lemma mod_vars_cP b s s' c x k :
-  eval_com (basic_sem b) s c k = Done s' ->
+Lemma mod_vars_cP cast s s' c x k :
+  eval_com cast c s k = Done s' ->
   x \notin mod_vars_c c ->
   s'.1 x = s.1 x.
 Proof.
@@ -481,8 +554,7 @@ case=> [x' e|x' e|e e'|x' e|e| |c1 c2|e c1 c2|e c] /=; rewrite 1?in_fset1.
 - case: eval_expr=> [| [n|] | |] //= [<-] {s'}.
   by rewrite setmE => /negbTE ->.
 - case: eval_expr=> // p.
-  case: ifP=> // Hp.
-  by case: free_fun => //= h' [<-] {s'}.
+  by case: ifP=> // Hp; case: ifP=> //= Hp' [<-].
 - by move=> [<-].
 - case e1: eval_com => [s''| |] //= e2.
   rewrite in_fsetU=> /norP [nc1 nc2].
@@ -496,16 +568,16 @@ Qed.
 
 (** Basic lemmas about the semantics *)
 
-Lemma eval_expr_unionm safe ls1 ls2 e :
+Lemma eval_expr_unionm cast ls1 ls2 e :
   fsubset (vars_e e) (domm ls1) ->
-  eval_expr safe (unionm ls1 ls2) e =
-  eval_expr safe ls1 e.
+  eval_expr cast e (unionm ls1 ls2) =
+  eval_expr cast e ls1.
 Proof.
 elim: e => [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH] //=.
 - by rewrite fsub1set unionmE => /dommP [v ->].
 - by rewrite fsubUset=> /andP [/IH1 {IH1} -> /IH2 {IH2} ->].
-- by case: safe IH=> // IH sub; rewrite IH.
-by case: safe IH=> // IH sub; rewrite IH.
+- by case: cast IH=> // IH sub; rewrite IH.
+by case: cast IH=> // IH sub; rewrite IH.
 Qed.
 
 Lemma eval_binop_names b v1 v2 :
@@ -517,8 +589,8 @@ case: b v1 v2=> [] [b1|n1|p1|] [b2|n2|p2|] //=; try by rewrite fsub0set.
 by rewrite fsubsetU //= !namesvE fsubsetxx.
 Qed.
 
-Lemma eval_expr_names safe ls e :
-  fsubset (names (eval_expr safe ls e)) (names ls).
+Lemma eval_expr_names cast ls e :
+  fsubset (names (eval_expr cast e ls)) (names ls).
 Proof.
 elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH] //=; try by rewrite fsub0set.
 - case get_x: (ls x) => [[b|n|p|]|] //=; try by rewrite fsub0set.
@@ -527,7 +599,7 @@ elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH] //=; try by rewrite fsub0set.
   by rewrite namesvE; apply/namesnP.
 - by rewrite (fsubset_trans (eval_binop_names b _ _)) // fsubUset IH1 IH2.
 - by case: eval_expr => // *; rewrite fsub0set.
-case: safe IH=> //.
+case: cast IH=> //.
 by case: (eval_expr _ _ _)=> [b|n|p|]; rewrite fsub0set.
 Qed.
 
@@ -612,7 +684,52 @@ apply: contra Pi=> Pi; apply/namesfsP; exists p=> //.
 by apply/fsetUP; left; apply/namesnP.
 Qed.
 
+Definition stateu s1 s2 : locals * heap :=
+  (unionm s1.1 s2.1, unionm s1.2 s2.2).
+
+Lemma eval_com_vars safe s s' c k :
+  fsubset (vars_c c) (domm s.1) ->
+  eval_com safe c s k = Done s' ->
+  domm s'.1 = domm s.1.
+Proof.
+elim: k s s' c => [|k IH] /= s s'; first by [].
+case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=;
+rewrite ?fsubU1set ?fsubUset.
+- case/andP=> [Px Pe] [<-]; rewrite domm_set /=.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsubsetUr.
+- case/andP=> [Px Pe].
+  case: eval_expr => // p; case: getm=> [v|] //= [<-] {s'}.
+  rewrite domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split.
+    by rewrite fsubU1set Px fsubsetxx.
+  by rewrite fsubsetUr.
+- case/andP=> Pe Pe'.
+  by case: eval_expr => // p; rewrite /updm; case: getm=> [v|] //= [<-] {s'}.
+- case: eval_expr => [|[n|]| |] // /andP [Px Pe] [<-] /=.
+  rewrite domm_set.
+  apply/eqP; rewrite eqEfsubset; apply/andP; split; last exact: fsubsetUr.
+  by rewrite fsubUset fsubsetxx andbT fsub1set.
+- case: eval_expr => // p.
+  by have [|]:= altP eqP=> // _; case: ifP=> //= in_h1 sub [<-] {s'}.
+- by move=> _ [<-] {s'}.
+- case/andP=> vars_c1 vars_c2.
+  case ev_c1: (eval_com _ _ _) => [s''| |] //= ev_c2.
+  move: vars_c2; rewrite -(IH _ _ _ vars_c1 ev_c1) => vars_c2.
+  by rewrite -(IH _ _ _ vars_c2 ev_c2).
+- case: eval_expr=> // - b.
+  by rewrite -andbA => /and3P [_ vars_c1 vars_c2]; case: b; eapply IH; eauto.
+case: eval_expr=> // - [] P; apply: IH; try by rewrite fsub0set.
+by rewrite /= fsetUC -fsetUA fsetUid fsubUset.
+Qed.
+
 End Basic.
 
 Arguments Error {_}.
 Arguments NotYet {_}.
+
+Infix "∪" := stateu (at level 40, left associativity) : state_scope.
+
+Instance stateu_eqvar : {eqvar stateu}.
+Proof. by rewrite /stateu; finsupp. Qed.

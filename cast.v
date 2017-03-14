@@ -15,7 +15,7 @@ Local Open Scope fset_scope.
 
 Lemma eval_com_domm safe ls h ls' h' c k :
   fsubset (vars_c c) (domm ls) ->
-  eval_com (basic_sem safe) (ls, h) c k = Done (ls', h') ->
+  eval_com safe c (ls, h) k = Done (ls', h') ->
   domm ls' = domm ls.
 Proof.
 elim: k ls ls' h h' c => [|k IH] //= ls ls' h h'.
@@ -37,7 +37,7 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
 - case: eval_expr => // p.
-  by have [|]:= altP eqP=> // _; case: free_fun=> // h'' _ [<- _].
+  by case: ifP=> //= _; case: ifP=> //= _ _ [<-].
 - congruence.
 - case eval_c1: eval_com=> [[ls'' h'']| | ] //.
   rewrite fsubUset=> /andP [vars_c1 vars_c2] eval_c2.
@@ -50,11 +50,15 @@ case: eval_expr=> // - [] P; apply: IH.
 by rewrite fsub0set.
 Qed.
 
+Let namesm_set (T S : nominalType) (m : {partmap T -> S}) (k : T) (x : S) :
+  fsubset (names (setm m k x)) (names m :|: names k :|: names x).
+Proof. eapply nom_finsuppP; finsupp. Qed.
+
 Theorem weak_frame ls1 h1 ls2 h2 ls' h' safe c k :
   fsubset (vars_c c) (domm ls1) ->
   fdisjoint (domm ls1) (domm ls2) ->
   fdisjoint (names (ls1, h1)) (names (domm h2)) ->
-  eval_com (basic_sem safe) (unionm ls1 ls2, unionm h1 h2) c k =
+  eval_com safe c (unionm ls1 ls2, unionm h1 h2) k =
   Done (ls', h') ->
   exists ls1' h1',
     [/\ ls' = unionm ls1' ls2,
@@ -115,7 +119,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - (* Alloc *)
   rewrite fsubU1set=> /andP [Px sub] disl dish; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [|[n|]| |] //= [<- <-].
-  rewrite setm_union /alloc_fun /= -lock /= unionmA.
+  rewrite setm_union /= unionmA.
   have dis': fdisjoint (domm h1) (domm h2).
     apply/fdisjoint_names_domm/fdisjointP=> i Pi'.
     by move/fdisjointP: dish; apply; apply/fsetUP; right; apply/fsetUP; left.
@@ -140,14 +144,14 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
     rewrite fsubUset fsubsetIl andbT names_mkblock names_nseq if_same.
     by rewrite fun_if if_arg fsetU0 fset1I fset0I (negbTE Fh2) if_same fsub0set.
   rewrite names_domm_mkblock.
-  case: ifP => _; first by rewrite fdisjoint0.
+  case: ifP => _; first by rewrite fdisjoint0s.
   rewrite fdisjointC fdisjoints1.
   by apply: contra Fh1; rewrite in_fsetU => ->.
 - (* Free *)
   move=> sub disl dish; rewrite eval_expr_unionm //.
   case eval_e: eval_expr=> [| |p|] //=.
   have [|] := altP eqP=> // _.
-  rewrite /free_fun -lock domm_curry; case: ifP=> [/imfsetP [/= p' inD Pp]|] //=.
+  rewrite domm_curry; case: ifP=> [/imfsetP [/= p' inD Pp]|] //=.
   move: inD; rewrite mem_domm unionmE.
   have dish': fdisjoint (names (domm h1)) (names (domm h2)).
     apply/fdisjointP=> i Pi'.

@@ -2,9 +2,7 @@ From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype.
 
 From CoqUtils Require Import ord fset partmap fperm nominal string.
 
-Require Import basic properties.
-
-Require structured.
+Require Import basic structured.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -13,36 +11,21 @@ Unset Printing Implicit Defensive.
 Section Separation.
 
 Local Open Scope fset_scope.
+Local Open Scope state_scope.
 
+Local Notation locals := {partmap string -> value}.
+Local Notation heap := {partmap ptr -> value}.
 Local Notation state := (locals * heap)%type.
 
 Implicit Type (e : expr) (c : com) (ls : locals) (h : heap)
               (s : state) (π : {fperm name}) (v : value)
               (P Q R : state -> Prop).
 
-Local Notation eval_com_b := (eval_com (basic_sem true)).
-Local Notation eval_com_s := (eval_com structured.restr_sem).
-
-Definition lift_restr P rs :=
-  forall A s, rs = mask A s -> P s.
-
-Lemma lift_restrP P A s :
-  lift_restr P (mask A s) <->
-  (forall π, fdisjoint (supp π) (names s :\: A) -> P (rename π s)).
-Proof.
-split.
-  move=> h π dis; apply: (h (rename π A)).
-  apply/mask_eqP; exists π=> //.
-  by rewrite renamefsI names_rename.
-move=> h A' s' /mask_eqP /= [π dis [e <-]].
-by apply: h.
-Qed.
-
 Definition triple P c Q :=
-  forall s k, fsubset (vars_c c) (vars_s s) ->
+  forall s k, fsubset (vars_c c) (domm s.1) ->
               P s ->
-              match eval_com_s (mask fset0 s) c k with
-              | Done rs' => lift_restr Q rs'
+              match eval_com c s k with
+              | Done rs' => lift_restr fset0 Q rs'
               | Error    => False
               | NotYet   => True
               end.
@@ -52,7 +35,7 @@ Definition separating_conjunction P Q s :=
     [/\ s = (ls, unionm h1 h2),
         P (ls, h1),
         Q (ls, h2) &
-        fdisjoint (objs (ls, h1)) (objs (ls, h2)) ].
+        fdisjoint (names (domm h1)) (names (domm h2)) ].
 
 Local Infix "*" := separating_conjunction.
 
@@ -62,23 +45,27 @@ Definition ind_vars (xs : {fset string}) P :=
                P s'.
 
 Lemma sc_lift P Q A ls h1 h2 :
-  lift_restr P (mask A (ls, h1)) ->
-  lift_restr Q (mask A (ls, h2)) ->
+  lift_restr fset0 P (hide A (Restr0 (ls, h1))) ->
+  lift_restr fset0 Q (hide A (Restr0 (ls, h2))) ->
   fdisjoint (names (domm h1)) (names (domm h2)) ->
-  lift_restr (P * Q) (mask A (ls, unionm h1 h2)).
+  lift_restr fset0 (P * Q) (hide A (Restr0 (ls, unionm h1 h2))).
 Proof.
-move=> /lift_restrP Ph1 /lift_restrP Qh2 dis.
-apply/lift_restrP=> π.
+move=> Ph1 Qh2 dis A12 /= s /restr_eqP /= [π ids_π [eA es]] _.
+move: ids_π.
 rewrite fsetDUl /= namesm_union_disjoint ?fdisjoint_names_domm //.
 rewrite (fsetDUl (names h1)) -[names ls :\: A]fsetUid -fsetUA.
 rewrite [in X in _ :|: X]fsetUC 2!fsetUA -fsetUA (fsetUC (names h2 :\: A)).
 rewrite -2!fsetDUl -(namespE (ls, h1)) -(namespE (ls, h2)) fdisjointUr.
 case/andP=> [dis_π1 dis_π2].
 exists (rename π ls), (rename π h1), (rename π h2).
-rewrite renamepE /= renamem_union; split=> //.
-- by apply: Ph1.
-- by apply: Qh2.
-by rewrite /objs /= -2!renamem_dom !names_rename -renamefs_disjoint.
+rewrite -es pair_eqvar unionm_eqvar; split=> //.
+- apply: (Ph1 (rename π A)); last exact: fdisjoint0s.
+  rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
+  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+- apply: (Qh2 (rename π A)); last exact: fdisjoint0s.
+  rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
+  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+by rewrite -![domm (rename _ _)]domm_eqvar -fdisjoint_eqvar renameT.
 Qed.
 
 Lemma frame_rule P Q R c :
@@ -88,34 +75,26 @@ Lemma frame_rule P Q R c :
 Proof.
 move=> t ind s k sub [ls [h1 [h2 [e ph1 ph2 dis]]]].
 rewrite {}e {s} in sub *.
-rewrite -[ls]unionm0 -[fset0]fset0U -str.stateuE /mutfresh ?fdisjoint0 //.
 move/(_ (ls, h1) k sub ph1): t.
-have {sub} sub : fsubset (vars_c c) (str.vars_s (mask fset0 (ls, h1))).
-  by rewrite -vars_sE.
-have dis' : fdisjoint (str.pub (mask fset0 (ls, h1)))
-                      (str.pub (mask fset0 (emptym, h2))).
-  by rewrite !pubE !fsetD0.
-case ev: (eval_com_s (mask fset0 (ls, h1)) c k)=> [rs'| |] //=; first last.
-  by rewrite (str.frame_loop sub dis' ev).
-move=> Q_rs'; rewrite (str.frame_ok sub dis' ev).
-case: rs' / (restrP (names ((emptym, h2) : state)) rs') Q_rs' ev
-      => /= A [ls' h1'] dis'' sub' Q_rs' ev.
-rewrite str.stateuE /mutfresh ?fdisjoint0 1?fdisjointC ?dis'' // fsetU0 unionm0.
-rewrite namespE /= namesm_empty fset0U in dis''.
+rewrite -{2}[ls]unionm0.
+case ev: (eval_com c (ls, h1) k)=> [rs'| |] //=; first last.
+  by rewrite (@frame_loop _ (ls, h1) (emptym, h2)).
+move=> Q_rs'; rewrite (@frame_ok _ (ls, h1) (emptym, h2) _ _ sub dis ev).
+case: rs' / (restrP (names (ls, h1) :|: names ((emptym, h2) : state)) rs')
+          Q_rs' ev => /= A [ls' h1'] dis'' sub' Q_rs' ev.
+move: dis''; rewrite fdisjointUl=> /andP [dis1 dis2].
+rewrite maprE // /stateu unionm0.
+rewrite namespE /= namesm_empty fset0U in dis2.
 apply: sc_lift=> //.
-  apply/lift_restrP=> π.
-  rewrite namespE fsetDUl /= (fsetDidPl _ _ dis'') fdisjointUr.
+  move=> /= A' s2' /restr_eqP [π].
+  rewrite namespE fsetDUl /= (fsetDidPl _ _ dis2) fdisjointUr.
   case/andP=> dis_ls' dis_h2.
-  rewrite renamepE /= (names_disjointE dis_h2).
+  rewrite pair_eqvar /= (renameJ dis_h2) => - [eA <-] _.
   apply/ind; eauto=> /= x nin_x.
-  pose f (st : state) := st.1 x.
-  have eq_f : equivariant f.
-    by move=> ? [??]; rewrite /f !renamepE /= renamemE renameT.
-  have e : oexpose (mapr f (mask fset0 (ls, h1))) = Some (ls x).
-    by rewrite maprE // /f /= oexposeE fdisjoint0.
-  rewrite -(str.mod_vars_cP ev nin_x) maprE //= oexposeE in e.
-  case: ifP e=> // dis''' [<-].
-  rewrite renamemE renameT names_disjointE // fdisjointC.
+  move: (mod_vars_cP ev nin_x); rewrite maprE ?fdisjoint0s //=.
+  move/(congr1 (@oexpose _)); rewrite oexposeE oexposeE0.
+  case: ifP=> // dis''' [<-].
+  rewrite renamemE renameT renameJ // fdisjointC.
   rewrite fdisjointC in dis_ls'.
   apply/fdisjoint_trans; eauto.
   apply/fsubsetP=> /= i in_i; apply/fsetDP; split.
@@ -126,19 +105,16 @@ suffices ?: fsubset (names (domm h1')) (names (domm h1) :|: A).
   apply: fdisjoint_trans; eauto.
   rewrite fdisjointUl dis /= fdisjointC.
   apply: fdisjoint_trans; eauto.
-  apply: equivariant_names.
-  by move=> ??; rewrite renamem_dom.
-rewrite fsetUC -fsubDset -[names (domm h1')]/(objs (ls', h1')).
-rewrite  -[names (domm h1)]/(objs (ls, h1)) -[objs (ls, h1)]fsetD0 -!pubE.
-apply: str.restr_eval_com_pub; eauto.
+  by eapply nom_finsuppP; finsupp.
+by move: (eval_com_blocks ev); rewrite elimrE ?namesT ?fdisjoint0s.
 Qed.
 
 Definition weak_triple P c Q :=
   forall s k,
-    fsubset (vars_c c) (vars_s s) ->
+    fsubset (vars_c c) (domm s.1) ->
     P s ->
-    if eval_com_s (mask fset0 s) c k is Done rs' then
-      lift_restr Q rs'
+    if eval_com c s k is Done rs' then
+      lift_restr fset0 Q rs'
     else True.
 
 Definition strong_separating_conjunction P Q s :=
@@ -146,18 +122,18 @@ Definition strong_separating_conjunction P Q s :=
     [/\ s = (ls, unionm h1 h2),
         P (ls, h1),
         Q (ls, h2) &
-        fdisjoint (names (ls, h1)) (objs (ls, h2)) ].
+        fdisjoint (names (ls, h1)) (names (domm h2)) ].
 
 Local Infix "*>" := strong_separating_conjunction (at level 20).
 
 Lemma ssc_lift P Q A ls h1 h2 :
-  lift_restr P (mask A (ls, h1)) ->
-  lift_restr Q (mask A (ls, h2)) ->
+  lift_restr fset0 P (hide A (Restr0 (ls, h1))) ->
+  lift_restr fset0 Q (hide A (Restr0 (ls, h2))) ->
   fdisjoint (names (ls, h1)) (names (domm h2)) ->
-  lift_restr (P *> Q) (mask A (ls, unionm h1 h2)).
+  lift_restr fset0 (P *> Q) (hide A (Restr0 (ls, unionm h1 h2))).
 Proof.
-move=> /lift_restrP Ph1 /lift_restrP Qh2 dis.
-apply/lift_restrP=> π.
+move=> Ph1 Qh2 dis A12 /= s /restr_eqP /= [π ids_π [eA es]] _.
+move: ids_π.
 rewrite fsetDUl /= namesm_union_disjoint ?fdisjoint_names_domm //; last first.
   suffices h : fsubset (names (domm h1)) (names (ls, h1)).
     by apply: fdisjoint_trans; eauto.
@@ -167,11 +143,14 @@ rewrite [in X in _ :|: X]fsetUC 2!fsetUA -fsetUA (fsetUC (names h2 :\: A)).
 rewrite -2!fsetDUl -(namespE (ls, h1)) -(namespE (ls, h2)) fdisjointUr.
 case/andP=> [dis_π1 dis_π2].
 exists (rename π ls), (rename π h1), (rename π h2).
-rewrite renamepE /= renamem_union; split=> //.
-- by apply: Ph1.
-- by apply: Qh2.
-rewrite /objs /= -renamem_dom -(renamepE _ (ls, h1)) !names_rename.
-by rewrite -renamefs_disjoint.
+rewrite -es pair_eqvar unionm_eqvar; split=> //.
+- apply: (Ph1 (rename π A)); last exact: fdisjoint0s.
+  rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
+  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+- apply: (Qh2 (rename π A)); last exact: fdisjoint0s.
+  rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
+  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+by rewrite -![domm (rename _ _)]domm_eqvar -fdisjoint_eqvar renameT.
 Qed.
 
 Lemma weak_frame_rule P Q R c :
@@ -181,53 +160,43 @@ Lemma weak_frame_rule P Q R c :
 Proof.
 move=> t ind s k sub [ls [h1 [h2 [e ph1 ph2 dis]]]].
 rewrite {}e {s} in sub *.
-rewrite -[ls]unionm0 -[fset0]fset0U -str.stateuE /mutfresh ?fdisjoint0 //.
 move/(_ (ls, h1) k sub ph1): t.
-have {sub} sub : fsubset (vars_c c) (str.vars_s (mask fset0 (ls, h1))).
-  by rewrite -vars_sE.
-have dis' : fdisjoint (str.pub (mask fset0 (ls, h1)))
-                      (str.pub (mask fset0 (emptym, h2))).
-  rewrite !pubE !fsetD0.
-  apply: fdisjoint_trans; first exact: objs_names.
-  exact: dis.
-case ev: (eval_com_s (mask fset0 (ls, h1)) c k)=> [rs'| |] //=; first last.
-- by rewrite (str.frame_loop sub dis' ev).
-- by rewrite (str.frame_error sub _ ev) // namesrE fsetD0 pubE fsetD0.
-move=> Q_rs'; rewrite (str.frame_ok sub dis' ev).
-case/(restrP (names ((emptym, h2) : state))): rs' Q_rs' ev
-      => /= A [ls' h1'] dis'' sub' Q_rs' ev.
-rewrite str.stateuE /mutfresh ?fdisjoint0 1?fdisjointC ?dis'' // fsetU0 unionm0.
-rewrite namespE /= namesm_empty fset0U in dis''.
+rewrite -{2}[ls]unionm0.
+have dis': fdisjoint (names (domm h1)) (names (domm h2)).
+  move: dis; rewrite fdisjointUl=> /andP [_] /=.
+  by rewrite fdisjointUl=> /andP [].
+case ev: (eval_com c (ls, h1) k)=> [rs'| |] //=; first last.
+- by rewrite (@frame_loop _ (ls, h1) (emptym, h2)).
+- by rewrite (@frame_error _ (ls, h1) (emptym, h2)).
+move=> Q_rs'; rewrite (@frame_ok _ (ls, h1) (emptym, h2) _ _ sub dis' ev).
+case: rs' / (restrP (names (ls, h1) :|: names ((emptym, h2) : state)) rs')
+          Q_rs' ev => /= A [ls' h1'] dis'' sub' Q_rs' ev.
+move: dis''; rewrite fdisjointUl=> /andP [dis1 dis2].
+rewrite maprE // /stateu unionm0.
+rewrite namespE /= namesm_empty fset0U in dis2.
 apply: ssc_lift=> //.
-  apply/lift_restrP=> π.
-  rewrite namespE fsetDUl /= (fsetDidPl _ _ dis'') fdisjointUr.
+  move=> /= A' s2' /restr_eqP [π].
+  rewrite namespE fsetDUl /= (fsetDidPl _ _ dis2) fdisjointUr.
   case/andP=> dis_ls' dis_h2.
-  rewrite renamepE /= (names_disjointE dis_h2).
+  rewrite pair_eqvar /= (renameJ dis_h2) => - [eA <-] _.
   apply/ind; eauto=> /= x nin_x.
-  pose f (st : state) := st.1 x.
-  have eq_f : equivariant f.
-    by move=> ? [??]; rewrite /f !renamepE /= renamemE renameT.
-  have e : oexpose (mapr f (mask fset0 (ls, h1))) = Some (ls x).
-    by rewrite maprE // /f /= oexposeE fdisjoint0.
-  rewrite -(str.mod_vars_cP ev nin_x) maprE //= oexposeE in e.
-  case: ifP e=> // dis''' [<-].
-  rewrite renamemE renameT names_disjointE // fdisjointC.
+  move: (mod_vars_cP ev nin_x); rewrite maprE ?fdisjoint0s //=.
+  move/(congr1 (@oexpose _)); rewrite oexposeE oexposeE0.
+  case: ifP=> // dis''' [<-].
+  rewrite renamemE renameT renameJ // fdisjointC.
   rewrite fdisjointC in dis_ls'.
   apply/fdisjoint_trans; eauto.
   apply/fsubsetP=> /= i in_i; apply/fsetDP; split.
     case e: getm in_i=> [v|]; try by rewrite in_fset0.
     move=> in_i; apply/namesmP/@PMFreeNamesVal; eauto.
   by move: i in_i; apply/fdisjointP; rewrite fdisjointC.
-suffices ?: fsubset (names (ls', h1')) (names (ls, h1) :|: A).
-  apply: fdisjoint_trans; first eauto.
-  rewrite fdisjointUl dis fdisjointC.
-  apply: fdisjoint_trans; eauto.
-  apply: equivariant_names.
-  by move=> ??; rewrite renamem_dom.
-rewrite fsetUC -fsubDset -[names (ls, h1)]fsetD0 -!namesrE.
-rewrite -[names (mask A (ls', h1'))]/(names (Done (mask A (ls', h1')))) -ev.
-apply (@equivariant_names _ _ (fun st => eval_com_s st c k)).
-by move=> ? ?; rewrite str.renaming.
+have: fsubset (names (eval_com c (ls, h1) k)) (names (ls, h1)).
+  eapply nom_finsuppP; finsupp.
+rewrite ev namesresE names_hider namesrE fsubDset fsetUC => ?.
+apply: fdisjoint_trans; first eauto.
+rewrite fdisjointUl dis fdisjointC.
+apply: fdisjoint_trans; eauto.
+by eapply nom_finsuppP; finsupp.
 Qed.
 
 End Separation.
