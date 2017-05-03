@@ -66,6 +66,7 @@ Inductive expr :=
 | Binop of binop & expr & expr
 | Neg of expr
 | ENil
+| Offset of expr
 | Cast of expr.
 
 Fixpoint tree_of_expr e :=
@@ -77,7 +78,8 @@ Fixpoint tree_of_expr e :=
                                         tree_of_expr e1; tree_of_expr e2]
   | Neg e => GenTree.Node 4 [:: tree_of_expr e]
   | ENil => GenTree.Node 5 [::]
-  | Cast e => GenTree.Node 6 [:: tree_of_expr e]
+  | Offset e => GenTree.Node 6 [:: tree_of_expr e]
+  | Cast e => GenTree.Node 7 [:: tree_of_expr e]
   end.
 
 Fixpoint expr_of_tree t :=
@@ -89,14 +91,15 @@ Fixpoint expr_of_tree t :=
     Binop (odflt Add (unpickle b)) (expr_of_tree e1) (expr_of_tree e2)
   | GenTree.Node 4 [:: e & _] => Neg (expr_of_tree e)
   | GenTree.Node 5 _ => ENil
-  | GenTree.Node 6 [:: e & _] => Cast (expr_of_tree e)
+  | GenTree.Node 6 [:: e & _] => Offset (expr_of_tree e)
+  | GenTree.Node 7 [:: e & _] => Cast (expr_of_tree e)
   | _ => Var String.EmptyString
   end.
 
 Lemma tree_of_exprK : cancel tree_of_expr expr_of_tree.
 Proof.
 rewrite /expr_of_tree [@unpickle]lock.
-by elim=> /= [x|b|n|b e1 -> e2 ->|e -> | |e ->] //; rewrite -lock pickleK.
+by elim=> /= [x|b|n|b e1 -> e2 ->|e -> | |e ->|e ->] //; rewrite -lock pickleK.
 Qed.
 
 Definition expr_eqMixin := CanEqMixin tree_of_exprK.
@@ -305,6 +308,8 @@ Fixpoint eval_expr cast e ls :=
   | Neg e =>
     if eval_expr cast e ls is VBool b then VBool (~~ b)
     else VNil
+  | Offset e =>
+    if eval_expr cast e ls is VPtr p then VNum p.2 else VNil
   | Cast e =>
     let v := eval_expr cast e ls in
     if cast then v
@@ -507,6 +512,7 @@ Fixpoint vars_e e :=
   | Binop _ e1 e2 => vars_e e1 :|: vars_e e2
   | ENil => fset0
   | Neg e => vars_e e
+  | Offset e => vars_e e
   | Cast e => vars_e e
   end.
 
@@ -573,9 +579,10 @@ Lemma eval_expr_unionm cast ls1 ls2 e :
   eval_expr cast e (unionm ls1 ls2) =
   eval_expr cast e ls1.
 Proof.
-elim: e => [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH] //=.
+elim: e => [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH] //=.
 - by rewrite fsub1set unionmE => /dommP [v ->].
 - by rewrite fsubUset=> /andP [/IH1 {IH1} -> /IH2 {IH2} ->].
+- by case: cast IH=> // IH sub; rewrite IH.
 - by case: cast IH=> // IH sub; rewrite IH.
 by case: cast IH=> // IH sub; rewrite IH.
 Qed.
@@ -592,12 +599,14 @@ Qed.
 Lemma eval_expr_names cast ls e :
   fsubset (names (eval_expr cast e ls)) (names ls).
 Proof.
-elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH] //=; try by rewrite fsub0set.
+elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH] //=;
+  try by rewrite fsub0set.
 - case get_x: (ls x) => [[b|n|p|]|] //=; try by rewrite fsub0set.
   apply/fsubsetP=> i; rewrite namesvE => /fset1P -> {i}.
   apply/namesmP; eapply PMFreeNamesVal; eauto.
   by rewrite namesvE; apply/namesnP.
 - by rewrite (fsubset_trans (eval_binop_names b _ _)) // fsubUset IH1 IH2.
+- by case: eval_expr => // *; rewrite fsub0set.
 - by case: eval_expr => // *; rewrite fsub0set.
 case: cast IH=> //.
 by case: (eval_expr _ _ _)=> [b|n|p|]; rewrite fsub0set.
