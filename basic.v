@@ -67,6 +67,7 @@ Inductive expr :=
 | Neg of expr
 | ENil
 | Offset of expr
+| Size of expr
 | Cast of expr.
 
 Fixpoint tree_of_expr e :=
@@ -79,7 +80,8 @@ Fixpoint tree_of_expr e :=
   | Neg e => GenTree.Node 4 [:: tree_of_expr e]
   | ENil => GenTree.Node 5 [::]
   | Offset e => GenTree.Node 6 [:: tree_of_expr e]
-  | Cast e => GenTree.Node 7 [:: tree_of_expr e]
+  | Size e => GenTree.Node 7 [:: tree_of_expr e]
+  | Cast e => GenTree.Node 8 [:: tree_of_expr e]
   end.
 
 Fixpoint expr_of_tree t :=
@@ -92,14 +94,16 @@ Fixpoint expr_of_tree t :=
   | GenTree.Node 4 [:: e & _] => Neg (expr_of_tree e)
   | GenTree.Node 5 _ => ENil
   | GenTree.Node 6 [:: e & _] => Offset (expr_of_tree e)
-  | GenTree.Node 7 [:: e & _] => Cast (expr_of_tree e)
+  | GenTree.Node 7 [:: e & _] => Size (expr_of_tree e)
+  | GenTree.Node 8 [:: e & _] => Cast (expr_of_tree e)
   | _ => Var String.EmptyString
   end.
 
 Lemma tree_of_exprK : cancel tree_of_expr expr_of_tree.
 Proof.
 rewrite /expr_of_tree [@unpickle]lock.
-by elim=> /= [x|b|n|b e1 -> e2 ->|e -> | |e ->|e ->] //; rewrite -lock pickleK.
+by elim=> /= [x|b|n|b e1 -> e2 ->|e -> | |e ->|e ->|e ->] //;
+rewrite -lock pickleK.
 Qed.
 
 Definition expr_eqMixin := CanEqMixin tree_of_exprK.
@@ -166,6 +170,8 @@ Canonical ptr_choiceType := Eval hnf in [choiceType of ptr].
 Canonical ptr_ordType := Eval hnf in [ordType of ptr].
 Canonical ptr_nominalType := Eval hnf in [nominalType of ptr].
 
+(** Pointers values contain an additional immutable size field, initialized at
+    allocation time. *)
 Inductive value :=
 | VBool of bool
 | VNum  of int
@@ -176,7 +182,7 @@ Definition sum_of_value v :=
   match v with
   | VBool b => inl b
   | VNum n => inr (inl n)
-  | VPtr p s => inr (inr (inl (p, s)))
+  | VPtr p sz => inr (inr (inl (p, sz)))
   | VNil => inr (inr (inr tt))
   end.
 
@@ -184,7 +190,7 @@ Definition value_of_sum v :=
   match v with
   | inl b => VBool b
   | inr (inl n) => VNum n
-  | inr (inr (inl (p, s))) => VPtr p s
+  | inr (inr (inl (p, sz))) => VPtr p sz
   | inr (inr (inr tt)) => VNil
   end.
 
@@ -207,7 +213,7 @@ Lemma renamevE pm v :
   match v with
   | VBool b => VBool b
   | VNum n => VNum n
-  | VPtr p s => VPtr (rename pm p) s
+  | VPtr p sz => VPtr (rename pm p) sz
   | VNil => VNil
   end.
 Proof. by case: v. Qed.
@@ -274,11 +280,11 @@ Qed.
 Definition eval_binop b v1 v2 :=
   match b, v1, v2 with
   | Add, VNum n1, VNum n2 => VNum (n1 + n2)
-  | Add, VPtr p s, VNum n
-  | Add, VNum n, VPtr p s => VPtr (p.1, p.2 + n) s
+  | Add, VPtr p sz, VNum n
+  | Add, VNum n, VPtr p sz => VPtr (p.1, p.2 + n) sz
   | Add, _, _ => VNil
   | Sub, VNum n1, VNum n2 => VNum (n1 - n2)
-  | Sub, VPtr p s, VNum n => VPtr (p.1, p.2 - n) s
+  | Sub, VPtr p sz, VNum n => VPtr (p.1, p.2 - n) sz
   | Sub, _, _ => VNil
   | Mul, VNum n1, VNum n2 => VNum (n1 * n2)
   | Mul, _, _ => VNil
@@ -308,6 +314,8 @@ Fixpoint eval_expr cast e ls :=
     else VNil
   | Offset e =>
     if eval_expr cast e ls is VPtr p _ then VNum p.2 else VNil
+  | Size e =>
+    if eval_expr cast e ls is VPtr _ sz then VNum sz else VNil
   | Cast e =>
     let v := eval_expr cast e ls in
     if cast then v
@@ -511,6 +519,7 @@ Fixpoint vars_e e :=
   | ENil => fset0
   | Neg e => vars_e e
   | Offset e => vars_e e
+  | Size e => vars_e e
   | Cast e => vars_e e
   end.
 
@@ -577,9 +586,10 @@ Lemma eval_expr_unionm cast ls1 ls2 e :
   eval_expr cast e (unionm ls1 ls2) =
   eval_expr cast e ls1.
 Proof.
-elim: e => [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH] //=.
+elim: e => [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH|e IH] //=.
 - by rewrite fsub1set unionmE => /dommP [v ->].
 - by rewrite fsubUset=> /andP [/IH1 {IH1} -> /IH2 {IH2} ->].
+- by case: cast IH=> // IH sub; rewrite IH.
 - by case: cast IH=> // IH sub; rewrite IH.
 - by case: cast IH=> // IH sub; rewrite IH.
 by case: cast IH=> // IH sub; rewrite IH.
@@ -598,13 +608,14 @@ Qed.
 Lemma eval_expr_names cast ls e :
   fsubset (names (eval_expr cast e ls)) (names ls).
 Proof.
-elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH] //=;
+elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH|e IH] //=;
   try by rewrite fsub0set.
 - case get_x: (ls x) => [[b|n|p|]|] //=; try by rewrite fsub0set.
   apply/fsubsetP=> i; rewrite namesvE => /fset1P -> {i}.
   apply/namesmP; eapply PMFreeNamesVal; eauto.
   by rewrite namesvE; apply/namesnP.
 - by rewrite (fsubset_trans (eval_binop_names b _ _)) // fsubUset IH1 IH2.
+- by case: eval_expr => // *; rewrite fsub0set.
 - by case: eval_expr => // *; rewrite fsub0set.
 - by case: eval_expr => // *; rewrite fsub0set.
 case: cast IH=> //.

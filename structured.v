@@ -82,10 +82,11 @@ Qed.
 
 Global Instance eval_expr_eqvar e : {eqvar eval_expr true e}.
 Proof.
-move=> π ls _ <-; elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH] //=.
+move=> π ls _ <-; elim: e=> [x|b|n|b e1 IH1 e2 IH2|e IH| |e IH|e IH|e IH] //=.
 - rewrite renamemE /= renameT.
   by case: (ls x)=> [v|] //=.
 - by rewrite -IH1 -IH2; apply: eval_binop_eqvar.
+- by rewrite -IH; case: eval_expr.
 - by rewrite -IH; case: eval_expr.
 by rewrite -IH; case: eval_expr.
 Qed.
