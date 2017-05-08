@@ -169,14 +169,14 @@ Canonical ptr_nominalType := Eval hnf in [nominalType of ptr].
 Inductive value :=
 | VBool of bool
 | VNum  of int
-| VPtr  of ptr
+| VPtr  of ptr & int
 | VNil.
 
 Definition sum_of_value v :=
   match v with
   | VBool b => inl b
   | VNum n => inr (inl n)
-  | VPtr p => inr (inr (inl p))
+  | VPtr p s => inr (inr (inl (p, s)))
   | VNil => inr (inr (inr tt))
   end.
 
@@ -184,7 +184,7 @@ Definition value_of_sum v :=
   match v with
   | inl b => VBool b
   | inr (inl n) => VNum n
-  | inr (inr (inl p)) => VPtr p
+  | inr (inr (inl (p, s))) => VPtr p s
   | inr (inr (inr tt)) => VNil
   end.
 
@@ -207,7 +207,7 @@ Lemma renamevE pm v :
   match v with
   | VBool b => VBool b
   | VNum n => VNum n
-  | VPtr p => VPtr (rename pm p)
+  | VPtr p s => VPtr (rename pm p) s
   | VNil => VNil
   end.
 Proof. by case: v. Qed.
@@ -215,13 +215,11 @@ Proof. by case: v. Qed.
 Lemma namesvE v :
   names v =
   match v with
-  | VPtr p => fset1 p.1
+  | VPtr p _ => fset1 p.1
   | _ => fset0
   end.
 Proof.
-case: v=> [b|n|[i n]|] //=.
-rewrite /names /= /bij_names /=; do ![rewrite /names /=].
-by rewrite /prod_names fsetU0.
+by case: v=> [b|n|[i n] ?|] //=; rewrite -2![RHS]fsetU0.
 Qed.
 
 Global Instance VBool_eqvar : {eqvar VBool}.
@@ -276,11 +274,11 @@ Qed.
 Definition eval_binop b v1 v2 :=
   match b, v1, v2 with
   | Add, VNum n1, VNum n2 => VNum (n1 + n2)
-  | Add, VPtr p, VNum n
-  | Add, VNum n, VPtr p => VPtr (p.1, p.2 + n)
+  | Add, VPtr p s, VNum n
+  | Add, VNum n, VPtr p s => VPtr (p.1, p.2 + n) s
   | Add, _, _ => VNil
   | Sub, VNum n1, VNum n2 => VNum (n1 - n2)
-  | Sub, VPtr p, VNum n => VPtr (p.1, p.2 - n)
+  | Sub, VPtr p s, VNum n => VPtr (p.1, p.2 - n) s
   | Sub, _, _ => VNil
   | Mul, VNum n1, VNum n2 => VNum (n1 * n2)
   | Mul, _, _ => VNil
@@ -309,11 +307,11 @@ Fixpoint eval_expr cast e ls :=
     if eval_expr cast e ls is VBool b then VBool (~~ b)
     else VNil
   | Offset e =>
-    if eval_expr cast e ls is VPtr p then VNum p.2 else VNil
+    if eval_expr cast e ls is VPtr p _ then VNum p.2 else VNil
   | Cast e =>
     let v := eval_expr cast e ls in
     if cast then v
-    else if eval_expr cast e ls is VPtr p then VNum (val p.1) else VNil
+    else if eval_expr cast e ls is VPtr p _ then VNum (val p.1) else VNil
   end.
 
 Section Result.
@@ -429,13 +427,13 @@ Fixpoint eval_com cast c s k : result (locals * heap) :=
       Done (setm s.1 x (eval_expr cast e s.1), s.2)
 
     | Load x e =>
-      if eval_expr cast e s.1 is VPtr p then
+      if eval_expr cast e s.1 is VPtr p _ then
         if s.2 p is Some v then Done (setm s.1 x v, s.2)
         else Error
       else Error
 
     | Store e e' =>
-      if eval_expr cast e s.1 is VPtr p then
+      if eval_expr cast e s.1 is VPtr p _ then
         if updm s.2 p (eval_expr cast e' s.1) is Some h' then Done (s.1, h')
         else Error
       else Error
@@ -443,12 +441,12 @@ Fixpoint eval_com cast c s k : result (locals * heap) :=
     | Alloc x e =>
       if eval_expr cast e s.1 is VNum (Posz n) then
         Done (let i := fresh (names s) in
-              (setm s.1 x (VPtr (i, 0 : int)),
+              (setm s.1 x (VPtr (i, 0 : int) n),
                unionm (mkblock i (nseq n (VNum 0))) s.2))
       else Error
 
     | Free e =>
-      if eval_expr cast e s.1 is VPtr p then
+      if eval_expr cast e s.1 is VPtr p _ then
         if p.2 == 0 then
           if p.1 \in domm ((@currym _ _ _ : heap -> _) s.2) then
             Done (s.1, filterm (fun (p' : ptr) _ => p'.1 != p.1) s.2)
@@ -552,14 +550,14 @@ Proof.
 elim: k s s' c=> [|k IH] //= [ls h] s'.
 case=> [x' e|x' e|e e'|x' e|e| |c1 c2|e c1 c2|e c] /=; rewrite 1?in_fset1.
 - by move=> [<-] {s'}; rewrite setmE => /negbTE ->.
-- case: eval_expr=> // p.
+- case: eval_expr=> // p sz.
   case: getm=> //= v [<-] {s'}.
   by rewrite setmE => /negbTE ->.
-- case: eval_expr=> // p.
+- case: eval_expr=> // p sz.
   by case: updm=> //= h' [<-] {s'} _.
 - case: eval_expr=> [| [n|] | |] //= [<-] {s'}.
   by rewrite setmE => /negbTE ->.
-- case: eval_expr=> // p.
+- case: eval_expr=> // p sz.
   by case: ifP=> // Hp; case: ifP=> //= Hp' [<-].
 - by move=> [<-].
 - case e1: eval_com => [s''| |] //= e2.
@@ -590,7 +588,8 @@ Qed.
 Lemma eval_binop_names b v1 v2 :
   fsubset (names (eval_binop b v1 v2)) (names (v1, v2)).
 Proof.
-case: b v1 v2=> [] [b1|n1|p1|] [b2|n2|p2|] //=; try by rewrite fsub0set.
+case: b v1 v2=> [] [b1|n1|p1 sz1|] [b2|n2|p2 sz2|] //=;
+  try by rewrite fsub0set.
 - by rewrite fsubsetU //= !namesvE fsubsetxx orbT.
 - by rewrite fsubsetU //= !namesvE fsubsetxx.
 by rewrite fsubsetU //= !namesvE fsubsetxx.
@@ -709,18 +708,18 @@ rewrite ?fsubU1set ?fsubUset.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
 - case/andP=> [Px Pe].
-  case: eval_expr => // p; case: getm=> [v|] //= [<-] {s'}.
+  case: eval_expr => // p sz; case: getm=> [v|] //= [<-] {s'}.
   rewrite domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
 - case/andP=> Pe Pe'.
-  by case: eval_expr => // p; rewrite /updm; case: getm=> [v|] //= [<-] {s'}.
+  by case: eval_expr => // p sz; rewrite /updm; case: getm=> [v|] //= [<-] {s'}.
 - case: eval_expr => [|[n|]| |] // /andP [Px Pe] [<-] /=.
   rewrite domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split; last exact: fsubsetUr.
   by rewrite fsubUset fsubsetxx andbT fsub1set.
-- case: eval_expr => // p.
+- case: eval_expr => // p sz.
   by have [|]:= altP eqP=> // _; case: ifP=> //= in_h1 sub [<-] {s'}.
 - by move=> _ [<-] {s'}.
 - case/andP=> vars_c1 vars_c2.

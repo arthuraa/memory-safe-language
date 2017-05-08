@@ -27,13 +27,13 @@ Fixpoint eval_com c s k : result {restr locals * heap} :=
       Done (Restr0 (setm s.1 x (eval_expr true e s.1), s.2))
 
     | Load x e =>
-      if eval_expr true e s.1 is VPtr p then
+      if eval_expr true e s.1 is VPtr p _ then
         if s.2 p is Some v then Done (Restr0 (setm s.1 x v, s.2))
         else Error
       else Error
 
     | Store e e' =>
-      if eval_expr true e s.1 is VPtr p then
+      if eval_expr true e s.1 is VPtr p _ then
         if updm s.2 p (eval_expr true e' s.1) is Some h' then Done (Restr0 (s.1, h'))
         else Error
       else Error
@@ -41,12 +41,12 @@ Fixpoint eval_com c s k : result {restr locals * heap} :=
     | Alloc x e =>
       if eval_expr true e s.1 is VNum (Posz n) then
         Done (new (names s) (fun i =>
-                Restr0 (setm s.1 x (VPtr (i, 0 : int)),
+                Restr0 (setm s.1 x (VPtr (i, 0 : int) n),
                         unionm (mkblock i (nseq n (VNum 0))) s.2)))
       else Error
 
     | Free e =>
-      if eval_expr true e s.1 is VPtr p then
+      if eval_expr true e s.1 is VPtr p _ then
         if p.2 == 0 then
           if p.1 \in domm ((@currym _ _ _ : heap -> _) s.2) then
             Done (Restr0 (s.1, filterm (fun (p' : ptr) _ => p'.1 != p.1) s.2))
@@ -77,7 +77,7 @@ Fixpoint eval_com c s k : result {restr locals * heap} :=
 
 Global Instance eval_binop_eqvar b : {eqvar eval_binop b}.
 Proof.
-by case: b => [] π [b1|n1|p1|] _ <- [b2|n2|p2|] _ <- //=; finsupp.
+by case: b => [] π [b1|n1|p1 sz1|] _ <- [b2|n2|p2 sz2|] _ <- //=; finsupp.
 Qed.
 
 Global Instance eval_expr_eqvar e : {eqvar eval_expr true e}.
@@ -102,13 +102,13 @@ Global Instance match_value_eqvar
        match v1 with
        | VBool x => b11 x : T
        | VNum x => b21 x
-       | VPtr x => b31 x
+       | VPtr x sz => b31 x sz
        | VNil => b41
        end
        match v2 with
        | VBool x => b12 x : T
        | VNum x => b22 x
-       | VPtr x => b32 x
+       | VPtr x sz => b32 x sz
        | VNil => b42
        end.
 Proof. by move=> <- ????; case: v1=> * /=; finsupp. Qed.
@@ -223,20 +223,20 @@ rewrite ?fsubU1set ?fsubUset.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
 - case/andP=> [Px Pe].
-  case: eval_expr => // p; case: (h p)=> [v|] //= [<-] {rs'}.
+  case: eval_expr => // p sz; case: (h p)=> [v|] //= [<-] {rs'}.
   rewrite maprE0 exposeE0 domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
 - case/andP=> Pe Pe'.
-  case: eval_expr => // p; rewrite /updm; case: (h p)=> [v|] //= [<-] {rs'}.
+  case: eval_expr => // p sz; rewrite /updm; case: (h p)=> [v|] //= [<-] {rs'}.
   by rewrite maprE0 exposeE0 /=.
 - case: eval_expr => [|[n|]| |] // /andP [Px Pe] [<-].
   rewrite namespE /= (newE _ (freshP _)) maprE ?fdisjoints1 ?freshP //.
   rewrite domm_set exposeE.
   apply/eqP; rewrite eqEfsubset; apply/andP; split; last exact: fsubsetUr.
   by rewrite fsubUset fsubsetxx andbT fsub1set.
-- case: eval_expr => // p.
+- case: eval_expr => // p sz.
   have [|]:= altP eqP=> // _; case: ifP=> //= in_h1 sub [<-] {rs'}.
   by rewrite maprE0 exposeE0.
 - by move=> _ [<-] {rs'}; rewrite maprE0 exposeE0.
@@ -262,9 +262,9 @@ Proof.
 elim: k s rs' c => [|k IH] /= [ls h] rs' //.
 case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
 - by move=> [<-] {rs'}; rewrite elimrE0 fsetU0 fsubsetxx.
-- case: eval_expr=> //= p; case: getm=> //= v [<-] {rs'}.
+- case: eval_expr=> //= p sz; case: getm=> //= v [<-] {rs'}.
   by rewrite elimrE0 fsetU0 fsubsetxx.
-- case: eval_expr=> //= p; rewrite /updm.
+- case: eval_expr=> //= p sz; rewrite /updm.
   case get_p: getm=> [v|] //= [<-] {rs'}.
   rewrite elimrE0 fsetU0 domm_set namesfsU fsubUset fsubsetxx andbT.
   rewrite namesfsE /= big_seq1 namespE namesnE fsetU0 fsub1set.
@@ -276,11 +276,11 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
     rewrite fsetUC fsetUS // names_domm_mkblock fun_if if_arg fsub0set.
     by rewrite fsubsetxx if_same.
   rewrite fsub1set; apply/fsetUP; left=> /=.
-  have ? : setm ls x (VPtr (i, 0 : int)) x = Some (VPtr (i, 0 : int)).
+  have ? : setm ls x (VPtr (i, 0 : int) n) x = Some (VPtr (i, 0 : int) n).
     by rewrite setmE eqxx.
   apply/namesmP/@PMFreeNamesVal; eauto.
-  by rewrite in_fsetU namesnE in_fset1 eqxx.
-- case: eval_expr=> //= p; case: ifP=> //= _; case: ifP=> //= _ [<-] {rs'}.
+  by rewrite namesvE in_fset1 eqxx.
+- case: eval_expr=> //= p sz; case: ifP=> //= _; case: ifP=> //= _ [<-] {rs'}.
   by rewrite elimrE0 fsetU0 /= namesfs_subset // domm_filter.
 - by move=> [<-] {rs'}; rewrite elimrE0 /= fsetU0 fsubsetxx.
 - (* FIXME: This is way too complicated *)
@@ -320,11 +320,11 @@ rewrite ?fsubUset ?fsub1set.
 - case/andP=> [x_in_vs sub] dis [<-] {rs}.
   by rewrite maprE0 eval_expr_unionm // setm_union.
 - case/andP=> [x_in_vs sub] dis.
-  rewrite eval_expr_unionm //; case: eval_expr=> //= p.
+  rewrite eval_expr_unionm //; case: eval_expr=> //= p sz.
   rewrite unionmE; case get_p: getm=> [v|] //= [<-] {rs}.
   by rewrite maprE0 setm_union.
 - case/andP=> [sub1 sub'] dis.
-  rewrite !eval_expr_unionm //; case: eval_expr=> p //=.
+  rewrite !eval_expr_unionm //; case: eval_expr=> //= p sz.
   rewrite /updm unionmE; case: getm=> //= _ [<-] {rs}.
   by rewrite maprE0 setm_union.
 - case/andP=> [x_in_vs sub] dis.
@@ -341,7 +341,7 @@ rewrite ?fsubUset ?fsub1set.
     eapply nom_finsuppP; finsupp.
   by move=> /fsubsetP/(_ i)/contra; apply; rewrite in_fsetU negb_or i1.
 - move=> sub dis.
-  rewrite !eval_expr_unionm //; case: eval_expr=> //= p.
+  rewrite !eval_expr_unionm //; case: eval_expr=> //= p sz.
   case: ifP=> //= _; rewrite !domm_curry domm_union imfsetU in_fsetU.
   case: ifP=> //= /imfsetP [p' in_h1 e_p] [<-] {rs}.
   rewrite maprE0 filterm_union ?fdisjoint_names_domm // (_ : filterm _ s2.2 = s2.2) //.
@@ -419,9 +419,9 @@ case: eval_expr=> //= b ev_while.
 by rewrite IH //; case: (b)=> //=; rewrite ?fsub0set // !fsubUset e_ls1 c_ls1.
 Qed.
 
-Lemma get_mem_dis e s1 h2 p :
+Lemma get_mem_dis e s1 h2 p sz :
   fdisjoint (names s1) (names (domm h2)) ->
-  eval_expr true e s1.1 = VPtr p ->
+  eval_expr true e s1.1 = VPtr p sz ->
   h2 p = None.
 Proof.
 move=> dis eval_e; case get_p: (h2 p)=> [v|] //.
@@ -552,9 +552,9 @@ elim: k s c rs' => /= [|k IH] s c rs' //.
 case: c => [x' e|x' e|e e'|x' e|e| |c1 c2|e c1 c2|e c] //=;
 rewrite ?in_fset1.
 - by move=> [<-]; rewrite maprE0 //= setmE => /negbTE ->.
-- case: eval_expr=> //= p; case: getm=> //= v [<-].
+- case: eval_expr=> //= p sz; case: getm=> //= v [<-].
   by rewrite maprE0 //= setmE => /negbTE ->.
-- case: eval_expr=> //= p; case: updm=> //= h' [<-].
+- case: eval_expr=> //= p sz; case: updm=> //= h' [<-].
   by rewrite maprE0 //= setmE.
 - case: eval_expr=> [|[n|]| |] //= [<-].
   rewrite /new; move: (fresh _) (freshP (names s)) => i nin_i.
@@ -562,7 +562,7 @@ rewrite ?in_fset1.
   rewrite hideD // namesrE fdisjointC; apply: (@fdisjoint_trans _ _ (names s)).
     eapply nom_finsuppP; finsupp.
   by rewrite fdisjoints1.
-- case: eval_expr=> // p; case: ifP => // _; case: ifP=> // _ [<-].
+- case: eval_expr=> // p sz; case: ifP => // _; case: ifP=> // _ [<-].
   by rewrite maprE0.
 - by move=> [<-] _; rewrite maprE0.
 - case ev1: eval_com=> [rs''| |] //=.

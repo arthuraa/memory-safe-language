@@ -24,19 +24,19 @@ case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
-- case: eval_expr => // p; case: (h p)=> [v|] //=.
+- case: eval_expr => // p sz; case: (h p)=> [v|] //=.
   rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
-- case: eval_expr => // p; rewrite /updm; case: (h p)=> [v|] //=.
+- case: eval_expr => // p sz; rewrite /updm; case: (h p)=> [v|] //=.
   by rewrite fsubUset=> /andP [Pe Pe'] [<- _].
 - case: eval_expr => // - [n|] //.
   rewrite fsubU1set=> /andP [Px Pe] [<- _]; rewrite domm_set.
   apply/eqP; rewrite eqEfsubset; apply/andP; split.
     by rewrite fsubU1set Px fsubsetxx.
   by rewrite fsubsetUr.
-- case: eval_expr => // p.
+- case: eval_expr => // p sz.
   by case: ifP=> //= _; case: ifP=> //= _ _ [<-].
 - congruence.
 - case eval_c1: eval_com=> [[ls'' h'']| | ] //.
