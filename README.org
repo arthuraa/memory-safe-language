@@ -1,7 +1,7 @@
 * Compiling
 
 Requirements:
-- Coq 8.5
+- Coq 8.6
 - MathComp 1.6
 - CoqUtils (https://github.com/arthuraa/coq-utils)
 
