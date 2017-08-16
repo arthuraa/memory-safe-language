@@ -143,9 +143,28 @@ Fixpoint tree_of_com c :=
   | While e c => GenTree.Node 8 [:: GenTree.Leaf (pickle e); tree_of_com c]
   end.
 
-(* FIXME: Do something about this later. *)
-Axiom com_of_tree : GenTree.tree nat -> com.
-Axiom tree_of_comK : cancel tree_of_com com_of_tree.
+Fixpoint com_of_tree t :=
+  let var x := odflt String.EmptyString (unpickle x) in
+  let exp e := odflt (Num 0) (unpickle e) in
+  match t with
+  | GenTree.Node 0 [:: GenTree.Leaf x; GenTree.Leaf e] => Assn (var x) (exp e)
+  | GenTree.Node 1 [:: GenTree.Leaf x; GenTree.Leaf e] => Load (var x) (exp e)
+  | GenTree.Node 2 [:: GenTree.Leaf e1; GenTree.Leaf e2] => Store (exp e1) (exp e2)
+  | GenTree.Node 3 [:: GenTree.Leaf x; GenTree.Leaf e] => Alloc (var x) (exp e)
+  | GenTree.Node 4 [:: GenTree.Leaf e] => Free (exp e)
+  | GenTree.Node 5 [::] => Skip
+  | GenTree.Node 6 [:: c1; c2] => Seq (com_of_tree c1) (com_of_tree c2)
+  | GenTree.Node 7 [:: GenTree.Leaf e; c1; c2] => If (exp e) (com_of_tree c1) (com_of_tree c2)
+  | GenTree.Node 8 [:: GenTree.Leaf e; c] => While (exp e) (com_of_tree c)
+  | _ => Skip
+  end.
+
+Lemma tree_of_comK : cancel tree_of_com com_of_tree.
+Proof.
+elim=> [x e|x e|e1 e2|x e|e| |c1 IH1 c2 IH2|e c1 IH1 c2 IH2|e c IH] //=;
+rewrite ?pickleK ?IH ?IH1 ?IH2 //; f_equal;
+by apply: Some_inj; rewrite -[RHS]pickleK.
+Qed.
 
 Definition com_eqMixin := CanEqMixin tree_of_comK.
 Canonical com_eqType := Eval hnf in EqType com com_eqMixin.
