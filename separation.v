@@ -42,6 +42,7 @@ Local Infix "*" := separating_conjunction.
 Definition ind_vars (xs : {fset string}) P :=
   forall s s', P s ->
                (forall x, x \notin xs -> s.1 x = s'.1 x) ->
+               s.2 = s'.2 ->
                P s'.
 
 Lemma sc_lift P Q A ls h1 h2 :
