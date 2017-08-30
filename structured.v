@@ -24,37 +24,37 @@ Fixpoint eval_com c s k : result {restr locals * heap} :=
   if k is S k' then
     match c with
     | Assn x e =>
-      Done (Restr0 (setm s.1 x (eval_expr true e s.1), s.2))
+      Done (Restr (setm s.1 x (eval_expr true e s.1), s.2))
 
     | Load x e =>
       if eval_expr true e s.1 is VPtr p _ then
-        if s.2 p is Some v then Done (Restr0 (setm s.1 x v, s.2))
+        if s.2 p is Some v then Done (Restr (setm s.1 x v, s.2))
         else Error
       else Error
 
     | Store e e' =>
       if eval_expr true e s.1 is VPtr p _ then
-        if updm s.2 p (eval_expr true e' s.1) is Some h' then Done (Restr0 (s.1, h'))
+        if updm s.2 p (eval_expr true e' s.1) is Some h' then Done (Restr (s.1, h'))
         else Error
       else Error
 
     | Alloc x e =>
       if eval_expr true e s.1 is VNum (Posz n) then
         Done (new (names s) (fun i =>
-                Restr0 (setm s.1 x (VPtr (i, 0 : int) n),
-                        unionm (mkblock i (nseq n (VNum 0))) s.2)))
+                Restr (setm s.1 x (VPtr (i, 0 : int) n),
+                       unionm (mkblock i (nseq n (VNum 0))) s.2)))
       else Error
 
     | Free e =>
       if eval_expr true e s.1 is VPtr p _ then
         if p.2 == 0 then
           if p.1 \in domm ((@currym _ _ _ : heap -> _) s.2) then
-            Done (Restr0 (s.1, filterm (fun (p' : ptr) _ => p'.1 != p.1) s.2))
+            Done (Restr (s.1, filterm (fun (p' : ptr) _ => p'.1 != p.1) s.2))
           else Error
         else Error
       else Error
 
-    | Skip => Done (Restr0 s)
+    | Skip => Done (Restr s)
 
     | Seq c1 c2 =>
       match eval_com c1 s k' with
@@ -233,7 +233,7 @@ rewrite ?fsubU1set ?fsubUset.
   case: eval_expr => // p sz; rewrite /updm; case: (h p)=> [v|] //= [<-] {rs'}.
   by rewrite maprE0 exposeE0 /=.
 - case: eval_expr => [|[n|]| |] // /andP [Px Pe] [<-].
-  rewrite namespE /= (newE _ (freshP _)) maprE ?fdisjoints1 ?freshP //.
+  rewrite namespE /= (newE _ (freshP _)) maprE ?fdisjoints1 ?in_fset0 //.
   rewrite domm_set exposeE.
   apply/eqP; rewrite eqEfsubset; apply/andP; split; last exact: fsubsetUr.
   by rewrite fsubUset fsubsetxx andbT fsub1set.
@@ -243,7 +243,7 @@ rewrite ?fsubU1set ?fsubUset.
 - by move=> _ [<-] {rs'}; rewrite maprE0 exposeE0.
 - case/andP=> vars_c1 vars_c2.
   case ev_c1: (eval_com _ _ _) => [rs''| |] //=.
-  case/(restrP (names (ls, h))): rs'' ev_c1 => A [ls' h'] dis sub ev_c1.
+  case/(restrP (names (ls, h))): rs'' ev_c1 => A [/= ls' h'] dis sub ev_c1.
   move: (IH (ls, h) _ _ vars_c1 ev_c1).
   rewrite /= bindrE ?maprE ?exposeE ?fdisjoint0s //= => e_ls.
   case ev_c2: eval_com=> [rs''| |] //= [<-] {rs'}; rewrite -e_ls /= in vars_c2.
@@ -361,7 +361,7 @@ rewrite ?fsubUset ?fsub1set.
   case/(restrP (names s1 :|: names s2)):
     rs1 ev_c1 => /= [A s' dis' sub] ev_c1.
   move: dis'; rewrite fdisjointUl => /andP [dis1 dis2].
-  rewrite bindrE ?fdisjoint0s ?(IH _ _ (hide A (Restr0 s'))) //.
+  rewrite bindrE ?fdisjoint0s ?(IH _ _ (hide A (Restr s'))) //.
   case ev_c2: eval_com => [rs2| |] //= [<-] {rs}.
   rewrite maprE // bindrE ?fdisjoint0s //=.
   rewrite (IH _ _ rs2) //= -?hide_mapr //.
@@ -515,7 +515,7 @@ Lemma eval_basic_restr c s k :
   exists A,
     eval_com c s k =
     match basic.eval_com true c s k with
-    | Done s' => Done (hide A (Restr0 s'))
+    | Done s' => Done (hide A (Restr s'))
     | Error => Error
     | NotYet => NotYet
     end.
@@ -547,7 +547,7 @@ Qed.
 Lemma mod_vars_cP s rs' c x k :
   eval_com c s k = Done rs' ->
   x \notin mod_vars_c c ->
-  mapr fset0 (fun s => s.1 x) rs' = Restr0 (s.1 x).
+  mapr fset0 (fun s => s.1 x) rs' = Restr (s.1 x).
 Proof.
 elim: k s c rs' => /= [|k IH] s c rs' //.
 case: c => [x' e|x' e|e e'|x' e|e| |c1 c2|e c1 c2|e c] //=;

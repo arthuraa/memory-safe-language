@@ -57,7 +57,7 @@ rewrite namesm_union_disjoint // namesm_union_disjoint.
 by apply: fdisjoint_names_domm.
 Qed.
 
-Lemma vars_sE A s : vars_s s = expose (mapr fset0 vars_s (hide A (Restr0 s))).
+Lemma vars_sE A s : vars_s s = expose (mapr fset0 vars_s (hide A (Restr s))).
 Proof. by rewrite /vars_s maprE ?fdisjoint0s ?exposeE. Qed.
 
 Lemma renaming π s c k :
@@ -70,7 +70,7 @@ have [A2 eA2] := str.eval_basic_restr c (rename π s) k.
 move: eA2; rewrite -str.eval_com_eqvar {}eA1.
 case: eval_com => [s1'| |]; case: eval_com => //;
 try by exists 1%fperm; rewrite rename1.
-move=> s2' []; rewrite hide_eqvar Restr0_eqvar  => /restr_eqP /= [π' _ [_ <-]].
+move=> s2' []; rewrite hide_eqvar Restr_eqvar  => /restr_eqP /= [π' _ [_ <-]].
 by exists (π' * π)%fperm; rewrite renameD.
 Qed.
 
@@ -92,7 +92,7 @@ have [A'] := str.eval_basic_restr c (s1 ∪ s2) k.
 rewrite ev''; case: eval_com=> // s' [] es'.
 move: es' ev''; rewrite [hide A' _]hideI namesrE.
 move: (_ :&: _) (fsubsetIr A' (names s'))=> /= {A'} A' subA'.
-move e: (hide A (Restr0 s1')) => /= s1''.
+move e: (hide A (Restr s1')) => /= s1''.
 case/(restrP (names s1 :|: names s2)): s1'' e => /= A'' s1'' disA'' subA''.
 move: disA''; rewrite fdisjointUl=> /andP [dis_s1_A'' dis_s2_A''].
 rewrite maprE //.
@@ -102,7 +102,7 @@ rewrite -{2 3}(renameK π s1').
 rewrite -namesrE in dis_π.
 move: (dis_π) subA ev' dis_o.
 rewrite -[fsubset _ _](renameT π) fsubset_eqvar (renamefsE _ (names s1')) -names_rename.
-rewrite -[hide A _](@renameJ _ π) // ?names_hider // hide_eqvar Restr0_eqvar.
+rewrite -[hide A _](@renameJ _ π) // ?names_hider // hide_eqvar Restr_eqvar.
 move: dis_v; rewrite -[domm s1'.1](renameT π) domm_eqvar fst_eqvar.
 move: (rename π A) (rename π s1') => {A s1' dis_π ev} /= A s1' dis_v _ subA ev.
 move=> dis [e1 e2]; move: dis_s1_A'' dis_s2_A'' {subA''}.

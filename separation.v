@@ -46,10 +46,10 @@ Definition ind_vars (xs : {fset string}) P :=
                P s'.
 
 Lemma sc_lift P Q A ls h1 h2 :
-  lift_restr fset0 P (hide A (Restr0 (ls, h1))) ->
-  lift_restr fset0 Q (hide A (Restr0 (ls, h2))) ->
+  lift_restr fset0 P (hide A (Restr (ls, h1))) ->
+  lift_restr fset0 Q (hide A (Restr (ls, h2))) ->
   fdisjoint (names (domm h1)) (names (domm h2)) ->
-  lift_restr fset0 (P * Q) (hide A (Restr0 (ls, unionm h1 h2))).
+  lift_restr fset0 (P * Q) (hide A (Restr (ls, unionm h1 h2))).
 Proof.
 move=> Ph1 Qh2 dis A12 /= s /restr_eqP /= [π ids_π [eA es]] _.
 move: ids_π.
@@ -62,10 +62,10 @@ exists (rename π ls), (rename π h1), (rename π h2).
 rewrite -es pair_eqvar unionm_eqvar; split=> //.
 - apply: (Ph1 (rename π A)); last exact: fdisjoint0s.
   rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
-  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+  by rewrite hide_eqvar Restr_eqvar pair_eqvar.
 - apply: (Qh2 (rename π A)); last exact: fdisjoint0s.
   rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
-  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+  by rewrite hide_eqvar Restr_eqvar pair_eqvar.
 by rewrite -![domm (rename _ _)]domm_eqvar -fdisjoint_eqvar renameT.
 Qed.
 
@@ -128,10 +128,10 @@ Definition strong_separating_conjunction P Q s :=
 Local Infix "*>" := strong_separating_conjunction (at level 20).
 
 Lemma ssc_lift P Q A ls h1 h2 :
-  lift_restr fset0 P (hide A (Restr0 (ls, h1))) ->
-  lift_restr fset0 Q (hide A (Restr0 (ls, h2))) ->
+  lift_restr fset0 P (hide A (Restr (ls, h1))) ->
+  lift_restr fset0 Q (hide A (Restr (ls, h2))) ->
   fdisjoint (names (ls, h1)) (names (domm h2)) ->
-  lift_restr fset0 (P *> Q) (hide A (Restr0 (ls, unionm h1 h2))).
+  lift_restr fset0 (P *> Q) (hide A (Restr (ls, unionm h1 h2))).
 Proof.
 move=> Ph1 Qh2 dis A12 /= s /restr_eqP /= [π ids_π [eA es]] _.
 move: ids_π.
@@ -147,10 +147,10 @@ exists (rename π ls), (rename π h1), (rename π h2).
 rewrite -es pair_eqvar unionm_eqvar; split=> //.
 - apply: (Ph1 (rename π A)); last exact: fdisjoint0s.
   rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
-  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+  by rewrite hide_eqvar Restr_eqvar pair_eqvar.
 - apply: (Qh2 (rename π A)); last exact: fdisjoint0s.
   rewrite -[LHS](@renameJ _ π) ?names_hider ?namesrE //.
-  by rewrite hide_eqvar Restr0_eqvar pair_eqvar.
+  by rewrite hide_eqvar Restr_eqvar pair_eqvar.
 by rewrite -![domm (rename _ _)]domm_eqvar -fdisjoint_eqvar renameT.
 Qed.
 
