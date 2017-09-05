@@ -19,6 +19,81 @@ Notation locals := {partmap string -> value}.
 Notation heap := {partmap ptr -> value}.
 
 Implicit Types (ls : locals) (h : heap) (x : string) (s : locals * heap).
+Implicit Types (A : {fset name}).
+
+Global Instance match_result_eqvar
+  (T : nominalType) S {eS : nominalRel S}
+  π (r1 r2 : result T) b11 b12 b21 b22 b31 b32 :
+  nomR π r1 r2 ->
+  nomR π b11 b12 ->
+  nomR π b21 b22 ->
+  nomR π b31 b32 ->
+  nomR π
+       match r1 with
+       | Done x => b11 x : S
+       | Error => b21
+       | NotYet => b31
+       end
+       match r2 with
+       | Done x => b12 x : S
+       | Error => b22
+       | NotYet => b32
+       end.
+Proof. case: r1 => [?| |] // <-; finsupp. Qed.
+
+Definition bind_res (T S : nominalType) A (f : T -> result {restr S}) (rx : result {restr T}) :=
+  match rx with
+  | Done rx => bindr A f rx
+  | Error   => Error
+  | NotYet  => NotYet
+  end.
+
+Global Instance bind_res_eqvar
+  (T S : nominalType) A (f : T -> result {restr S}) :
+  {finsupp A f} -> {finsupp A bind_res A f}.
+Proof. by rewrite /bind_res; finsupp. Qed.
+
+Definition pbind_res (T : nominalType) A (P : T -> Prop) (rx : result {restr T}) :=
+  forall (rx' : {restr T}), rx = Done rx' -> pbindr A P rx'.
+
+Lemma pbind_resE (T : nominalType) A (P : T -> Prop) (rx : {restr T}) :
+  pbind_res A P (Done rx) <-> pbindr A P rx.
+Proof. by split; [move=> /(_ rx erefl)|move=> ? _ [<-]]. Qed.
+
+Lemma hide_pbind_res (T : nominalType) A A' (P : T -> Prop) (rx : result {restr T}) :
+  {finsupp A P} -> fdisjoint A A' -> pbind_res A P (hide A' rx) <-> pbind_res A P rx.
+Proof.
+case: rx => [rx| |] //= fs dis.
+by rewrite -[hide A' (Done rx)]/(Done (hide A' rx)) 2!pbind_resE hide_pbindr.
+Qed.
+
+Lemma pbind_res_bind (T S : nominalType) A1 A2 A3
+                     (P : T -> Prop) (Q : S -> Prop)
+                     (f : T -> result {restr S}) (rx : result {restr T}) :
+  {finsupp A1 P} ->
+  {finsupp A2 Q} ->
+  {finsupp A3 f} ->
+  (forall x : T, P x -> pbind_res A2 Q (f x)) ->
+  pbind_res A1 P rx ->
+  pbind_res A2 Q (bind_res A3 f rx).
+Proof.
+move=> fs1 fs2 fs3 Pf.
+case: rx => [rx| |] //=.
+case/(restrP (A1 :|: A2 :|: A3)): rx => /= A4 x.
+rewrite 2!fdisjointUl -andbA => /and3P [dis1 dis2 dis3] sub.
+rewrite pbind_resE pbindrE // => Px.
+rewrite bindrE // hide_pbind_res //.
+by apply: Pf.
+Qed.
+
+Lemma pbind_res_impl (T : nominalType) A1 A2 (P1 P2 : T -> Prop) rx :
+  {finsupp A1 P1} ->
+  {finsupp A2 P2} ->
+  (forall x : T, P1 x -> P2 x) ->
+  pbind_res A1 P1 rx -> pbind_res A2 P2 rx.
+Proof.
+move: rx => [rx| |] //=; rewrite 2!pbind_resE; exact: pbindr_impl.
+Qed.
 
 Fixpoint eval_com c s k : result {restr locals * heap} :=
   if k is S k' then
@@ -48,7 +123,7 @@ Fixpoint eval_com c s k : result {restr locals * heap} :=
     | Free e =>
       if eval_expr true e s.1 is VPtr p _ then
         if p.2 == 0 then
-          if p.1 \in domm ((@currym _ _ _ : heap -> _) s.2) then
+          if p.1 \in domm (*((@currym _ _ _ : heap -> _) s.2)*) (currym s.2) then
             Done (Restr (s.1, filterm (fun (p' : ptr) _ => p'.1 != p.1) s.2))
           else Error
         else Error
@@ -56,12 +131,7 @@ Fixpoint eval_com c s k : result {restr locals * heap} :=
 
     | Skip => Done (Restr s)
 
-    | Seq c1 c2 =>
-      match eval_com c1 s k' with
-      | Done rs' => bindr fset0 (fun s' => eval_com c2 s' k') rs'
-      | Error => Error
-      | NotYet => NotYet
-      end
+    | Seq c1 c2 => bind_res fset0 (fun s' => eval_com c2 s' k') (eval_com c1 s k')
 
     | If e ct ce =>
       if eval_expr true e s.1 is VBool b then
@@ -131,25 +201,6 @@ Global Instance match_int_eqvar
        end.
 Proof. by move=> <- ? ?; case: n1=> // n; finsupp. Qed.
 
-Global Instance match_result_eqvar
-  (T : nominalType) S {eS : nominalRel S}
-  π (r1 r2 : result T) b11 b12 b21 b22 b31 b32 :
-  nomR π r1 r2 ->
-  nomR π b11 b12 ->
-  nomR π b21 b22 ->
-  nomR π b31 b32 ->
-  nomR π
-       match r1 with
-       | Done x => b11 x : S
-       | Error => b21
-       | NotYet => b31
-       end
-       match r2 with
-       | Done x => b12 x : S
-       | Error => b22
-       | NotYet => b32
-       end.
-Proof. case: r1 => [?| |] // <-; finsupp. Qed.
 
 (*
 
@@ -210,100 +261,72 @@ elim: k π c1 c2 c1c2 s1 s2 s1s2 => [|k IH] π c _ <- s1 s2 s1s2 //=.
 case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=; by finsupp.
 Qed.
 
-(* FIXME: This lemma has a simpler proof in basic.v *)
-Lemma eval_com_vars s rs' c k :
-  fsubset (vars_c c) (domm s.1) ->
-  eval_com c s k = Done rs' ->
-  expose (mapr fset0 (fun s' => domm s'.1) rs') = domm s.1.
+Lemma eval_com_vars s c k :
+  fsubset (mod_vars_c c) (domm s.1) ->
+  pbind_res
+    (names s)
+    (fun s' => domm s'.1 = domm s.1)
+    (eval_com c s k).
 Proof.
-elim: k s rs' c => [|k IH] /= [ls h] rs'; first by [].
+have sub: forall (T : ordType) (x : T) (X : {fset T}),
+            x \in X -> x |: X = X.
+  by move=> T x X Px; apply/fsetUidPr; rewrite fsub1set.
+elim: k s c => [|k IH] /= s; first by [].
 case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=;
-rewrite ?fsubU1set ?fsubUset.
-- case/andP=> [Px Pe] [<-]; rewrite maprE0 exposeE0 domm_set /=.
-  apply/eqP; rewrite eqEfsubset; apply/andP; split.
-    by rewrite fsubU1set Px fsubsetxx.
-  by rewrite fsubsetUr.
-- case/andP=> [Px Pe].
-  case: eval_expr => // p sz; case: (h p)=> [v|] //= [<-] {rs'}.
-  rewrite maprE0 exposeE0 domm_set.
-  apply/eqP; rewrite eqEfsubset; apply/andP; split.
-    by rewrite fsubU1set Px fsubsetxx.
-  by rewrite fsubsetUr.
-- case/andP=> Pe Pe'.
-  case: eval_expr => // p sz; rewrite /updm; case: (h p)=> [v|] //= [<-] {rs'}.
-  by rewrite maprE0 exposeE0 /=.
-- case: eval_expr => [|[n|]| |] // /andP [Px Pe] [<-].
-  rewrite namespE /= (newE _ (freshP _)) maprE ?fdisjoints1 ?in_fset0 //.
-  rewrite domm_set exposeE.
-  apply/eqP; rewrite eqEfsubset; apply/andP; split; last exact: fsubsetUr.
-  by rewrite fsubUset fsubsetxx andbT fsub1set.
-- case: eval_expr => // p sz.
-  have [|]:= altP eqP=> // _; case: ifP=> //= in_h1 sub [<-] {rs'}.
-  by rewrite maprE0 exposeE0.
-- by move=> _ [<-] {rs'}; rewrite maprE0 exposeE0.
-- case/andP=> vars_c1 vars_c2.
-  case ev_c1: (eval_com _ _ _) => [rs''| |] //=.
-  case/(restrP (names (ls, h))): rs'' ev_c1 => A [/= ls' h'] dis sub ev_c1.
-  move: (IH (ls, h) _ _ vars_c1 ev_c1).
-  rewrite /= bindrE ?maprE ?exposeE ?fdisjoint0s //= => e_ls.
-  case ev_c2: eval_com=> [rs''| |] //= [<-] {rs'}; rewrite -e_ls /= in vars_c2.
-  by rewrite -hide_mapr ?fdisjoint0s // hideT (IH (ls', h') _ c2) //=.
+rewrite ?fsub1set ?fsubUset.
+- by move=> Px _ [<-]; rewrite restrE0 domm_set sub.
+- case: eval_expr => // p sz Px.
+  case: getm=> [v|] //= _ [<-]; by rewrite restrE0 domm_set sub.
+- case: eval_expr=> // p sz _.
+  by rewrite /updm; case: getm=> [v|] //= _ [<-]; rewrite restrE0.
+- case: eval_expr => [|[n|]| |] // Px _ [<-].
+  by rewrite /new pbindrE ?fdisjoints1 ?freshP //= domm_set sub.
+- case: eval_expr => // p sz _.
+  case: ifP=> // _; case: ifP=> //= in_h1 _ [<-].
+  by rewrite restrE0.
+- by move=> _ _ [<-]; rewrite restrE0.
+- case/andP=> /IH vars_c1 vars_c2.
+  move: vars_c1; eapply pbind_res_bind; try by typeclasses eauto.
+  move=> /= s' ess'; move: vars_c2; rewrite -{1}ess' => /IH.
+  eapply pbind_res_impl; try by typeclasses eauto.
+  by move=> /= ? ->.
 - case: eval_expr=> // - b.
-  by rewrite -andbA => /and3P [_ vars_c1 vars_c2]; case: b; eapply IH; eauto.
+  by case/andP=> vars_c1 vars_c2; case: b; eapply IH; eauto.
 case: eval_expr=> // - [] P; apply: IH; try by rewrite fsub0set.
-by rewrite /= fsetUC -fsetUA fsetUid fsubUset.
+by rewrite /= fsetUid.
 Qed.
 
-Lemma eval_com_blocks s rs' c k :
-  eval_com c s k = Done rs' ->
-  elimr (names s)
-        (fun A s' => fsubset (names (domm s'.2))
-                             (names (domm s.2) :|: A)) rs'.
+(* FIXME: Replacing [names A] by [A] below breaks typeclass inference. *)
+Lemma eval_com_blocks A s c k :
+  fdisjoint (names (domm s.2)) A ->
+  pbind_res
+    (names A)
+    (fun s' => fdisjoint (names (domm s'.2)) A)
+    (eval_com c s k).
 Proof.
-elim: k s rs' c => [|k IH] /= [ls h] rs' //.
+elim: k s c => [|k IH] /= s //.
 case=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=.
-- by move=> [<-] {rs'}; rewrite elimrE0 fsetU0 fsubsetxx.
-- case: eval_expr=> //= p sz; case: getm=> //= v [<-] {rs'}.
-  by rewrite elimrE0 fsetU0 fsubsetxx.
+- by move=> dis _ [<-]; rewrite restrE0.
+- case: eval_expr=> //= p sz; case: getm=> //= v dis _ [<-].
+  by rewrite restrE0.
 - case: eval_expr=> //= p sz; rewrite /updm.
-  case get_p: getm=> [v|] //= [<-] {rs'}.
-  rewrite elimrE0 fsetU0 domm_set namesfsU fsubUset fsubsetxx andbT.
-  rewrite namesfsE /= big_seq1 namespE namesnE fsetU0 fsub1set.
-  apply/namesfsP; exists p; first by apply/dommP; eauto.
-  by rewrite namespE fsetU0 in_fset1 eqxx.
-- case: eval_expr=> [| [n|] | |] //= [<-] {rs'}.
-  move: (fresh _) (freshP (names (ls, h)))=> i nin_i.
-  rewrite (newE _ nin_i) elimrE ?fdisjoints1 ?domm_union ?namesfsU //=.
-    rewrite fsetUC fsetUS // names_domm_mkblock fun_if if_arg fsub0set.
-    by rewrite fsubsetxx if_same.
-  rewrite fsub1set; apply/fsetUP; left=> /=.
-  have ? : setm ls x (VPtr (i, 0 : int) n) x = Some (VPtr (i, 0 : int) n).
-    by rewrite setmE eqxx.
-  apply/namesmP/@PMFreeNamesVal; eauto.
-  by rewrite namesvE in_fset1 eqxx.
-- case: eval_expr=> //= p sz; case: ifP=> //= _; case: ifP=> //= _ [<-] {rs'}.
-  by rewrite elimrE0 fsetU0 /= namesfs_subset // domm_filter.
-- by move=> [<-] {rs'}; rewrite elimrE0 /= fsetU0 fsubsetxx.
-- (* FIXME: This is way too complicated *)
-  case ev_c1: eval_com=> [rs''| |] //=.
-  case/(restrP (names (ls, h))): rs'' ev_c1=> /= A s' dis sub ev_c1.
-  rewrite bindrE ?fdisjoint0s //.
-  case ev_c2: eval_com=> [rs''| |] //= [<-] {rs'}.
-  case/(restrP (names (ls, h) :|: names s')): rs'' ev_c2=> /= A' s'' dis' sub' ev_c2.
-  move: dis'; rewrite fdisjointUl=> /andP [dis_s_A' dis_s'_A'].
-  rewrite hideU hideI namesrE fsetIUl (fsetIidPl _ _ sub').
-  rewrite elimrE ?namesT ?fdisjoint0s ?fdisjointUr ?dis ?fsubUset
-          ?sub' ?andbT ?fsubsetIr //=.
-    move: (IH _ _ _ ev_c1); rewrite elimrE ?namesT ?fdisjoint0s //= => sub1.
-    suffices sub'' : fsubset (names (domm s''.2)) (names (domm h) :|: (A :|: A')).
-      apply/fsubsetP=> i i_in_s''; rewrite in_fsetU in_fsetU in_fsetI.
-      rewrite namespE in_fsetU [_ \in names s''.2]in_fsetU i_in_s'' /= orbT andbT.
-      by move/fsubsetP/(_ _ i_in_s''): sub''; rewrite 2!in_fsetU.
-    apply: fsubset_trans; last by rewrite fsetUA; exact: fsetSU sub1.
-    by move: (IH _ _ _ ev_c2); rewrite elimrE ?namesT ?fdisjoint0s.
-  rewrite dis_s_A' andbT fdisjointC; apply: fdisjoint_trans.
-     exact: fsubsetIl.
-   by rewrite fdisjointC.
+  case get_p: getm=> [v|] //= dis _ [<-]; rewrite restrE0 /= domm_set.
+  suff/fsetUidPr ->: fsubset (fset1 p) (domm s.2) by [].
+  by rewrite fsub1set mem_domm get_p.
+- case: eval_expr=> [| [n|] | |] //= dis _ [<-].
+  eapply pbindr_new; try by finsupp.
+  move=> i nin_A nin_s; rewrite restrE0 /=.
+  have {dis} dis: fdisjoint (i |: names (domm s.2)) A.
+    by rewrite fdisjointUl fdisjoint1s -{1}[A]namesfsnE nin_A.
+  apply: fdisjoint_trans dis.
+  rewrite domm_union namesfsU names_domm_mkblock !(fun_if, if_arg).
+  by rewrite fset0U fsubsetxx fsubsetUr if_same.
+- case: eval_expr=> //= p sz; case: ifP=> //= _ dis; case: ifP=> //= _ _ [<-].
+  by rewrite restrE0 /=; apply: fdisjoint_trans dis; rewrite namesfs_subset // domm_filter.
+- by move=> dis _ [<-]; rewrite restrE0 /=.
+- move=> dis.
+  have := IH _ c1 dis.
+  by eapply pbind_res_bind; finsupp.
 - by case: eval_expr=> // b; apply: IH.
 - by case: eval_expr=> // b; apply: IH.
 Qed.
@@ -319,7 +342,7 @@ elim: k c s1 rs => [|k IH] //= c s1 rs.
 case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] /=;
 rewrite ?fsubUset ?fsub1set.
 - case/andP=> [x_in_vs sub] dis [<-] {rs}.
-  by rewrite maprE0 eval_expr_unionm // setm_union.
+  by rewrite restrE0 eval_expr_unionm // setm_union.
 - case/andP=> [x_in_vs sub] dis.
   rewrite eval_expr_unionm //; case: eval_expr=> //= p sz.
   rewrite unionmE; case get_p: getm=> [v|] //= [<-] {rs}.
@@ -365,15 +388,14 @@ rewrite ?fsubUset ?fsub1set.
   case ev_c2: eval_com => [rs2| |] //= [<-] {rs}.
   rewrite maprE // bindrE ?fdisjoint0s //=.
   rewrite (IH _ _ rs2) //= -?hide_mapr //.
-    move: (@eval_com_vars s1 _ _ _ sub1 ev_c1).
-    by rewrite /= maprE ?fdisjoint0s ?exposeE // => ->.
-  move: (@eval_com_blocks s1 _ _ _ ev_c1).
-  rewrite elimrE ?namesT ?fdisjoint0s //=.
-  move => sub_blocks; apply: fdisjoint_trans; first exact: sub_blocks.
-  have ?: fsubset (names (domm s2.2)) (names s2.2) by exact: fsubsetUl.
-  rewrite fdisjointUl dis /= fdisjointC; apply: fdisjoint_trans.
-    by eauto.
-  by move: dis2; rewrite fdisjointUl => /andP [].
+    have:= @eval_com_vars _ _ k (fsubset_trans (mod_vars_c_subset c1) sub1).
+    by rewrite ev_c1 pbind_resE hide_pbindr // restrE0 => ->.
+  have := @eval_com_blocks _ s1 c1 k dis.
+  rewrite ev_c1 pbind_resE.
+  have: fdisjoint (names (domm s2.2)) A.
+    by apply: fdisjoint_trans dis2; eapply nom_finsuppP; finsupp.
+  move: (names (domm s2.2)) => A' dis2'.
+  by rewrite pbindrE // namesfsnE.
 - rewrite -andbA=> /and3P [sub_e sub_c1 sub_c2] dis_h1h2.
   rewrite eval_expr_unionm //; case: eval_expr=> //= b ev_if.
   by rewrite (IH _ _ rs) //; case: (b).
@@ -402,16 +424,16 @@ rewrite ?fsubUset ?fsub1set.
     => /= A s1' disA subA ev_c1.
   move: disA; rewrite fdisjointUl=> /andP [disA1 disA2].
   rewrite bindrE ?fdisjoint0s // (frame_ok _ _ ev_c1) //.
-  rewrite maprE ?bindrE ?fdisjoint0s //.
+  rewrite maprE //= ?bindrE ?fdisjoint0s //.
   case ev_c2: eval_com=> //= _; rewrite IH //.
-    move: (eval_com_vars c1_ls1 ev_c1)=> /=.
-    by rewrite maprE ?fdisjoint0s ?exposeE // => ->.
-  move: (eval_com_blocks ev_c1).
-  rewrite elimrE ?namesT ?fdisjoint0s //= => sub_h1'_h1A.
-  apply: fdisjoint_trans; first exact: sub_h1'_h1A.
-  rewrite fdisjointUl dis_h1_h2 fdisjointC /=.
-  move: disA2; rewrite fdisjointUl=> /andP [_].
-  by rewrite fdisjointUl=> /andP [].
+    have:= @eval_com_vars _ _ k (fsubset_trans (mod_vars_c_subset c1) c1_ls1).
+    by rewrite ev_c1 pbind_resE hide_pbindr // restrE0 => ->.
+  have := @eval_com_blocks _ s1 c1 k dis_h1_h2.
+  rewrite ev_c1 pbind_resE.
+  have: fdisjoint (names (domm s2.2)) A.
+    by apply: fdisjoint_trans disA2; eapply nom_finsuppP; finsupp.
+  move: (names (domm s2.2)) => A' disA2'.
+  by rewrite pbindrE // namesfsnE.
 - rewrite -andbA => /and3P [e_ls1 c1_ls1 c2_ls2] dis_h1_h2.
   rewrite eval_expr_unionm //=; case: eval_expr=> //= b ev_if.
   by rewrite IH //; case: (b).
@@ -470,8 +492,8 @@ rewrite ?fsubUset ?fsub1set.
     move: dis'; rewrite fdisjointUl=> /andP [dis_s1_A dis_s2_A].
     rewrite maprE ?bindrE ?fdisjoint0s //= => ev_c1.
     case ev_c2: eval_com=> //=; rewrite IH //.
-      move: (eval_com_vars c1_ls1 ev_c1).
-      by rewrite maprE ?fdisjoint0s ?exposeE //= => ->.
+      have:= @eval_com_vars _ _ k (fsubset_trans (mod_vars_c_subset c1) c1_ls1).
+      by rewrite ev_c1 pbind_resE hide_pbindr // restrE0 => ->.
     have: fsubset (names (eval_com c1 s1 k)) (names s1).
       by eapply nom_finsuppP; finsupp.
     rewrite ev_c1 namesresE names_hider namesrE fsubDset => sub_s1'.
@@ -536,7 +558,7 @@ case: c => [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
 - have [A ->] := IH s c1.
   case: basic.eval_com => [s'| |]; eauto.
   have [A' e] := IH s' c2.
-  exists (A :|: A'); rewrite bindrE ?fdisjoint0s // e.
+  exists (A :|: A'); rewrite /= bindrE ?fdisjoint0s // e.
   by case: basic.eval_com=> //= s''; rewrite -hideU.
 - case: eval_expr; try by exists fset0.
   by case; apply: IH.

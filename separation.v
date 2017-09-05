@@ -25,7 +25,7 @@ Definition triple P c Q :=
   forall s k, fsubset (vars_c c) (domm s.1) ->
               P s ->
               match eval_com c s k with
-              | Done rs' => lift_restr fset0 Q rs'
+              | Done rs' => pbindr fset0 Q rs'
               | Error    => False
               | NotYet   => True
               end.
@@ -46,10 +46,10 @@ Definition ind_vars (xs : {fset string}) P :=
                P s'.
 
 Lemma sc_lift P Q A ls h1 h2 :
-  lift_restr fset0 P (hide A (Restr (ls, h1))) ->
-  lift_restr fset0 Q (hide A (Restr (ls, h2))) ->
+  pbindr fset0 P (hide A (Restr (ls, h1))) ->
+  pbindr fset0 Q (hide A (Restr (ls, h2))) ->
   fdisjoint (names (domm h1)) (names (domm h2)) ->
-  lift_restr fset0 (P * Q) (hide A (Restr (ls, unionm h1 h2))).
+  pbindr fset0 (P * Q) (hide A (Restr (ls, unionm h1 h2))).
 Proof.
 move=> Ph1 Qh2 dis A12 /= s /restr_eqP /= [π ids_π [eA es]] _.
 move: ids_π.
@@ -102,12 +102,12 @@ apply: sc_lift=> //.
     case e: getm in_i=> [v|]; try by rewrite in_fset0.
     move=> in_i; apply/namesmP/@PMFreeNamesVal; eauto.
   by move: i in_i; apply/fdisjointP; rewrite fdisjointC.
-suffices ?: fsubset (names (domm h1')) (names (domm h1) :|: A).
-  apply: fdisjoint_trans; eauto.
-  rewrite fdisjointUl dis /= fdisjointC.
-  apply: fdisjoint_trans; eauto.
-  by eapply nom_finsuppP; finsupp.
-by move: (eval_com_blocks ev); rewrite elimrE ?namesT ?fdisjoint0s.
+have := @eval_com_blocks _ (ls, h1) c k dis.
+rewrite ev pbind_resE /=.
+have: fdisjoint (names (domm h2)) A.
+  by apply: fdisjoint_trans dis2; eapply nom_finsuppP; finsupp.
+move: (names (domm h2)) => A' disA'.
+by rewrite pbindrE //= namesfsnE.
 Qed.
 
 Definition weak_triple P c Q :=
@@ -115,7 +115,7 @@ Definition weak_triple P c Q :=
     fsubset (vars_c c) (domm s.1) ->
     P s ->
     if eval_com c s k is Done rs' then
-      lift_restr fset0 Q rs'
+      pbindr fset0 Q rs'
     else True.
 
 Definition strong_separating_conjunction P Q s :=
@@ -128,10 +128,10 @@ Definition strong_separating_conjunction P Q s :=
 Local Infix "*>" := strong_separating_conjunction (at level 20).
 
 Lemma ssc_lift P Q A ls h1 h2 :
-  lift_restr fset0 P (hide A (Restr (ls, h1))) ->
-  lift_restr fset0 Q (hide A (Restr (ls, h2))) ->
+  pbindr fset0 P (hide A (Restr (ls, h1))) ->
+  pbindr fset0 Q (hide A (Restr (ls, h2))) ->
   fdisjoint (names (ls, h1)) (names (domm h2)) ->
-  lift_restr fset0 (P *> Q) (hide A (Restr (ls, unionm h1 h2))).
+  pbindr fset0 (P *> Q) (hide A (Restr (ls, unionm h1 h2))).
 Proof.
 move=> Ph1 Qh2 dis A12 /= s /restr_eqP /= [π ids_π [eA es]] _.
 move: ids_π.

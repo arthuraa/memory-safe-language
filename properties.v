@@ -111,13 +111,12 @@ move=> dis_s1_A dis_s2_A; case/restr_eqP=> /= π' dis_π'.
 rewrite (fsetIidPl _ _ subA').
 move=> [_ <-] {A' s' subA'} ev'.
 have dis_s1' : fdisjoint (objs s1') (objs s2).
-  have sub: fsubset (objs s1') (A :|: objs s1).
-    move: (str.eval_com_blocks ev).
-    by rewrite elimrE ?namesT ?fdisjoint0s // fsetUC.
-  apply: fdisjoint_trans; eauto.
-  rewrite fdisjointUl dis andbT fdisjointC.
-  apply: fdisjoint_trans; last by eauto.
-  exact: objs_names.
+  have:= @str.eval_com_blocks (objs s2) s1 c k dis.
+  rewrite ev /= str.pbind_resE.
+  have: fdisjoint (names (objs s2)) A.
+    by apply: fdisjoint_trans dis_s2_A; eapply nom_finsuppP; finsupp.
+  move: (objs s2) => A' disA'.
+  by rewrite pbindrE //= namesfsnE.
 have e_s2 : rename π' s2 = s2.
   rewrite names_stateu // in dis_π'.
   rewrite renameJ //.

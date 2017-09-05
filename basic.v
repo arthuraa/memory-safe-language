@@ -598,6 +598,15 @@ case=> [x' e|x' e|e e'|x' e|e| |c1 c2|e c1 c2|e c] /=; rewrite 1?in_fset1.
   rewrite (IH _ _ _ he) //= fsetUid.
 Qed.
 
+Lemma mod_vars_c_subset c : fsubset (mod_vars_c c) (vars_c c).
+Proof.
+elim: c=> [x e|x e|e e'|x e|e| |c1 IH1 c2 IH2|e c1 IH1 c2 IH2|e c IH] /=;
+rewrite ?fsub0set ?fsub1set ?in_fsetU1 ?eqxx //.
+- by rewrite fsetUSS.
+- by rewrite -fsetUA; apply: fsubsetU; rewrite fsetUSS // orbT.
+by rewrite fsubsetU // IH orbT.
+Qed.
+
 (** Basic lemmas about the semantics *)
 
 Lemma eval_expr_unionm cast ls1 ls2 e :
