@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-From CoqUtils Require Import ord fset partmap fperm nominal string.
+From CoqUtils Require Import ord fset fmap fperm nominal string.
 
 Require Import basic.
 
@@ -50,7 +50,7 @@ case: eval_expr=> // - [] P; apply: IH.
 by rewrite fsub0set.
 Qed.
 
-Let namesm_set (T S : nominalType) (m : {partmap T -> S}) (k : T) (x : S) :
+Let namesm_set (T S : nominalType) (m : {fmap T -> S}) (k : T) (x : S) :
   fsubset (names (setm m k x)) (names m :|: names k :|: names x).
 Proof. eapply nom_finsuppP; finsupp. Qed.
 
@@ -160,7 +160,7 @@ case: c=> [x e|x e|e e'|x e|e| |c1 c2|e c1 c2|e c] //=.
     move=> _ [<- <-]; exists ls1, (filterm (fun p'' _ => p''.1 != p.1) h1).
     split=> //.
       rewrite filterm_union; last by apply fdisjoint_names_domm.
-      congr unionm; apply/eq_partmap=> p''; rewrite filtermE.
+      congr unionm; apply/eq_fmap=> p''; rewrite filtermE.
       case get_p'': (h2 p'')=> [v'|] //=.
       have [Pp'|] //= := altP eqP.
       have names_p: p.1 \in names (domm h1).

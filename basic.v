@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-From CoqUtils Require Import ord fset partmap fperm nominal string.
+From CoqUtils Require Import ord fset fmap fperm nominal string.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -259,17 +259,17 @@ Proof. by move=> s p _ <-; finsupp. Qed.
 Global Instance VNil_eqvar : {eqvar VNil}.
 Proof. by []. Qed.
 
-Notation locals := {partmap string -> value}.
-Notation heap := {partmap ptr -> value}.
+Notation locals := {fmap string -> value}.
+Notation heap := {fmap ptr -> value}.
 
 Implicit Types (ls : locals) (h : heap) (s : locals * heap).
 
 Definition mkblock (b : name) vs : heap :=
   uncurrym (setm emptym b
-                 (mkpartmapfp (fun i => if i is Posz n then
-                                          Some (nth VNil vs n)
-                                        else None)
-                              [seq Posz n | n <- iota 0 (size vs)])).
+                 (mkfmapfp (fun i => if i is Posz n then
+                                       Some (nth VNil vs n)
+                                     else None)
+                           [seq Posz n | n <- iota 0 (size vs)])).
 
 Lemma mkblockE p b vs :
   mkblock b vs p =
@@ -281,7 +281,7 @@ Lemma mkblockE p b vs :
   else None.
 Proof.
 rewrite /mkblock uncurrymE setmE.
-case: ifP=> //= _; rewrite mkpartmapfpE.
+case: ifP=> //= _; rewrite mkfmapfpE.
 case: p.2=> [n|n] /=.
   rewrite mem_map; last by move=> ?? [->].
   by rewrite mem_iota /= add0n.
@@ -672,7 +672,7 @@ Lemma names_domm_mkblock i vs :
 Proof.
 case: ifP=> [/nilP ->|nnil_vs].
   rewrite (_ : mkblock i [::] = emptym) ?domm0 ?namesfs0 //.
-  apply/eq_partmap=> p; rewrite mkblockE /= emptymE.
+  apply/eq_fmap=> p; rewrite mkblockE /= emptymE.
   by case: ifP=> //; case: p.2.
 rewrite domm_mkblock names_fset.
 apply/eqP; rewrite eqEfsubset; apply/andP; split; apply/fsubsetP=> i'.

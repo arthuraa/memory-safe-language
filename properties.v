@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-From CoqUtils Require Import ord fset partmap fperm nominal string.
+From CoqUtils Require Import ord fset fmap fperm nominal string.
 
 Require Import basic.
 
@@ -18,8 +18,8 @@ Section Properties.
 Local Open Scope fset_scope.
 Local Open Scope state_scope.
 
-Local Notation locals := {partmap string -> value}.
-Local Notation heap := {partmap ptr -> value}.
+Local Notation locals := {fmap string -> value}.
+Local Notation heap := {fmap ptr -> value}.
 Local Notation state := (locals * heap)%type.
 
 Implicit Type (e : expr) (c : com) (ls : locals) (h : heap)

@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-From CoqUtils Require Import ord fset partmap fperm nominal string.
+From CoqUtils Require Import ord fset fmap fperm nominal string.
 
 Require Import basic.
 
@@ -15,8 +15,8 @@ Local Open Scope fset_scope.
 Local Open Scope fperm_scope.
 Local Open Scope state_scope.
 
-Notation locals := {partmap string -> value}.
-Notation heap := {partmap ptr -> value}.
+Notation locals := {fmap string -> value}.
+Notation heap := {fmap ptr -> value}.
 
 Implicit Types (ls : locals) (h : heap) (x : string) (s : locals * heap).
 Implicit Types (A : {fset name}).
@@ -371,7 +371,7 @@ rewrite ?fsubUset ?fsub1set.
   rewrite maprE0 filterm_union ?fdisjoint_names_domm // (_ : filterm _ s2.2 = s2.2) //.
   have {p' e_p in_h1} in_h1 : p.1 \in names (domm s1.2).
     by apply/namesfsP; exists p'=> //; rewrite e_p in_fsetU namesnE in_fset1 eqxx.
-  apply/eq_partmap=> p'; rewrite filtermE.
+  apply/eq_fmap=> p'; rewrite filtermE.
   case get: (s2.2 p')=> [v|] //=.
   have [e_p|] //= := altP (_ =P _).
   suffices in_h2 : p.1 \in names (domm s2.2).
