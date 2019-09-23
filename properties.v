@@ -1,7 +1,9 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-From CoqUtils Require Import ord fset fmap fperm nominal string.
+From extructures Require Import ord fset fmap fperm.
+
+From CoqUtils Require Import nominal string.
 
 Require Import basic.
 
@@ -71,7 +73,7 @@ move: eA2; rewrite -str.eval_com_eqvar {}eA1.
 case: eval_com => [s1'| |]; case: eval_com => //;
 try by exists 1%fperm; rewrite rename1.
 move=> s2' []; rewrite hide_eqvar Restr_eqvar  => /restr_eqP /= [π' _ [_ <-]].
-by exists (π' * π)%fperm; rewrite renameD.
+by exists (π' * π)%fperm; rewrite renameA.
 Qed.
 
 Theorem frame_ok s1 s1' s2 c k :
@@ -122,7 +124,7 @@ have e_s2 : rename π' s2 = s2.
   rewrite renameJ //.
   move: dis_π'; rewrite fsetDUl fdisjointUr=>/andP [_].
   by move/fsetDidPl: dis_s2_A => ->.
-exists (π' * π)%fperm; rewrite ?stateu_eqvar renameD fperm_mulsK {π}.
+exists (π' * π)%fperm; rewrite ?stateu_eqvar renameA fperm_mulsK {π}.
   by congr Done; congr stateu.
 by rewrite -e_s2 -objs_eqvar -[objs (rename _ _)]objs_eqvar -fdisjoint_eqvar.
 Qed.

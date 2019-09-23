@@ -1,9 +1,10 @@
 * Compiling
 
 Requirements:
-- Coq 8.6
-- MathComp 1.6
-- CoqUtils (https://github.com/arthuraa/coq-utils)
+- Coq 8.9
+- MathComp 1.9
+- Extructures 0.2 (https://github.com/arthuraa/extructures; coq-extructures on opam)
+- CoqUtils (https://github.com/arthuraa/coq-utils; commit ce97408b)
 
 To compile just hit "make"
 

@@ -1,6 +1,8 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype.
 
-From CoqUtils Require Import ord fset fmap fperm nominal string.
+From extructures Require Import ord fset fmap fperm.
+
+From CoqUtils Require Import nominal string.
 
 Require Import basic structured.
 
