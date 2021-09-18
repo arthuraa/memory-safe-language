@@ -1,5 +1,7 @@
 -R . Top
 -install none
+-arg "-w -ambiguous-paths"
+-arg "-w -notation-overridden"
 basic.v
 structured.v
 cast.v
