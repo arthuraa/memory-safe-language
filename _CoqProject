@@ -1,5 +1,4 @@
--R . Top
--install none
+-Q . memsafe
 -arg "-w -ambiguous-paths"
 -arg "-w -notation-overridden"
 basic.v

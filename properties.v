@@ -1,13 +1,15 @@
+Require Import Coq.Strings.String.
+
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
+From deriving Require Import deriving.
+From extructures Require Import ord fset fmap ffun fperm.
 
-From extructures Require Import ord fset fmap fperm.
+From CoqUtils Require Import nominal.
 
-From CoqUtils Require Import nominal string.
+From memsafe Require Import basic.
 
-Require Import basic.
-
-Require structured.
+From memsafe Require structured.
 
 Module str := structured.
 
@@ -98,8 +100,8 @@ move e: (hide A (Restr s1')) => /= s1''.
 case/(restrP (names s1 :|: names s2)): s1'' e => /= A'' s1'' disA'' subA''.
 move: disA''; rewrite fdisjointUl=> /andP [dis_s1_A'' dis_s2_A''].
 rewrite maprE //.
-case/restr_eqP=> /= π dis_π; rewrite (fsetIidPl _ _ subA'').
-rewrite (fsetIidPl _ _ subA).
+case/restr_eqP=> /= π dis_π; rewrite (fsetIidPl subA'').
+rewrite (fsetIidPl subA).
 rewrite -{2 3}(renameK π s1').
 rewrite -namesrE in dis_π.
 move: (dis_π) subA ev' dis_o.
@@ -110,7 +112,7 @@ move: (rename π A) (rename π s1') => {A s1' dis_π ev} /= A s1' dis_v _ subA e
 move=> dis [e1 e2]; move: dis_s1_A'' dis_s2_A'' {subA''}.
 rewrite -{}e1 -{}e2 {A'' s1''}.
 move=> dis_s1_A dis_s2_A; case/restr_eqP=> /= π' dis_π'.
-rewrite (fsetIidPl _ _ subA').
+rewrite (fsetIidPl subA').
 move=> [_ <-] {A' s' subA'} ev'.
 have dis_s1' : fdisjoint (objs s1') (objs s2).
   have:= @str.eval_com_blocks (objs s2) s1 c k dis.

@@ -1,10 +1,12 @@
+Require Import Coq.Strings.String.
+
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype.
+From deriving Require Import deriving.
+From extructures Require Import ord fset fmap ffun fperm.
 
-From extructures Require Import ord fset fmap fperm.
+From CoqUtils Require Import nominal.
 
-From CoqUtils Require Import nominal string.
-
-Require Import basic structured.
+From memsafe Require Import basic structured.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -90,7 +92,7 @@ rewrite maprE // /stateu unionm0.
 rewrite namespE /= namesm_empty fset0U in dis2.
 apply: sc_lift=> //.
   move=> /= A' s2' /restr_eqP [π].
-  rewrite namespE fsetDUl /= (fsetDidPl _ _ dis2) fdisjointUr.
+  rewrite namespE fsetDUl /= (fsetDidPl dis2) fdisjointUr.
   case/andP=> dis_ls' dis_h2.
   rewrite pair_eqvar /= (renameJ dis_h2) => - [eA <-] _.
   apply/ind; eauto=> /= x nin_x.
@@ -179,7 +181,7 @@ rewrite maprE // /stateu unionm0.
 rewrite namespE /= namesm_empty fset0U in dis2.
 apply: ssc_lift=> //.
   move=> /= A' s2' /restr_eqP [π].
-  rewrite namespE fsetDUl /= (fsetDidPl _ _ dis2) fdisjointUr.
+  rewrite namespE fsetDUl /= (fsetDidPl dis2) fdisjointUr.
   case/andP=> dis_ls' dis_h2.
   rewrite pair_eqvar /= (renameJ dis_h2) => - [eA <-] _.
   apply/ind; eauto=> /= x nin_x.

@@ -1,11 +1,14 @@
+Require Import Coq.Strings.String.
+
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
-From extructures Require Import ord fset fmap fperm.
+From deriving Require Import deriving.
+From extructures Require Import ord fset fmap ffun fperm.
 
-From CoqUtils Require Import nominal string.
+From CoqUtils Require Import nominal.
 
-Require Import basic.
+From memsafe Require Import basic.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

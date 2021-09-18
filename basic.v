@@ -1,9 +1,12 @@
+Require Import Coq.Strings.String.
+
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype choice seq ssrnum ssrint ssralg bigop.
 
+From deriving Require Import deriving.
 From extructures Require Import ord fset fmap fperm.
 
-From CoqUtils Require Import nominal string.
+From CoqUtils Require Import nominal.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -14,12 +17,10 @@ Section Basic.
 Local Open Scope fset_scope.
 
 Definition int_ordMixin :=
-  (@OrdMixin int <=%R
-      (@Ord.Ax _ _ (@Num.Theory.lerr _) (@Num.Theory.ler_trans _)
-                   (@Num.Theory.ler_anti _)
-                   (@Num.Theory.ler_total _)))%R.
+  @PcanOrdMixin int _ _ _ pickleK.
 
-Canonical int_ordType := Eval hnf in OrdType int int_ordMixin.
+Canonical int_ordType :=
+  Eval hnf in OrdType int int_ordMixin.
 Canonical int_nominalType :=
   Eval hnf in [nominalType for int by //].
 Canonical int_trivialNominalType :=
