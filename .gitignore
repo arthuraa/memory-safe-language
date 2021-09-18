@@ -2,4 +2,8 @@
 *.glob
 *.v.d
 *.aux
-Makefile.coq
+*.vok
+*.vos
+CoqMakefile*
+.CoqMakefile.d
+.envrc
