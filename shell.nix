@@ -51,5 +51,5 @@ let coq-utils = with lib; mkCoqDerivation rec {
 in
 
 mkShell {
-  packages = [ coq stdpp iris ocaml ssreflect deriving extructures coq-utils ];
+  packages = [ coq ocaml ssreflect deriving extructures coq-utils ];
 }
