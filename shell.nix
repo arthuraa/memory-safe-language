@@ -19,10 +19,7 @@ let deriving = with lib; mkCoqDerivation rec {
   defaultVersion = "0.1.0";
   release."0.1.0".sha256 = "sha256:11crnjm8hyis1qllkks3d7r07s1rfzwvyvpijya3s6iqfh8c7xwh";
   releaseRev = (v: "v${v}");
-  propagatedBuildInputs = [ ocaml ssreflect ];
-  preBuild = ''
-    substituteInPlace CoqMakefile.local --replace ocaml ${ocaml}/bin/ocaml
-  '';
+  propagatedBuildInputs = [ coq coq.ocaml ssreflect ];
 };
 in
 
